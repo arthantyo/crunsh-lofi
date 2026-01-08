@@ -94,7 +94,7 @@ export async function generateThumbnail(options, outputPath) {
   }
 
   // Add decorative elements
-  drawLofiElements(ctx, width, height);
+  // drawLofiElements(ctx, width, height);
 
   // Main Title - Large centered text with Instrument Serif
   ctx.fillStyle = "#FFFFFF";
@@ -105,6 +105,32 @@ export async function generateThumbnail(options, outputPath) {
 
   const titleText = options.title || "lofi beats";
   ctx.fillText(titleText.toLowerCase(), width / 2, height / 2 - 250);
+
+  // Add sample object image below title with lighten blend mode
+  try {
+    const sampleObjectPath =
+      options.sampleObject ||
+      path.join(__dirname, "..", "assets", "sample-objects", "burger.png");
+    const sampleObject = await loadImage(sampleObjectPath);
+
+    // Apply lighten blend mode for better integration
+    ctx.globalCompositeOperation = "lighten";
+
+    // Scale down the image (50% of original size)
+    const scale = 0.4;
+    const scaledWidth = sampleObject.width * scale;
+    const scaledHeight = sampleObject.height * scale;
+
+    // Position below the title, centered
+    const objectX = (width - scaledWidth) / 2;
+    const objectY = height / 2 - 330; // Below the title
+    ctx.drawImage(sampleObject, objectX, objectY, scaledWidth, scaledHeight);
+
+    // Reset composite operation
+    ctx.globalCompositeOperation = "source-over";
+  } catch (error) {
+    console.log("Sample object image not found, skipping");
+  }
 
   // Subtitle - Bottom right of the frame grain with Plus Jakarta Sans Extra Bold
   ctx.shadowBlur = 0;
@@ -153,8 +179,8 @@ function drawLofiElements(ctx, width, height) {
   // Music notes
   ctx.font = "48px Arial";
   ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
-  ctx.fillText("♪", width - 150, 150);
-  ctx.fillText("♫", width - 100, 200);
+  ctx.fillText("♪", width / 2 + 320, 150);
+  ctx.fillText("♫", width / 2 + 320, 200);
 
   // Bottom accent line
   ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
