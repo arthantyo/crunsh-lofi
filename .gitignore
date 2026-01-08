@@ -1,0 +1,11 @@
+node_modules/
+.env
+output/
+temp/
+*.mp4
+*.mp3
+*.jpg
+*.png
+!test-output-*.png
+credentials.json
+token.json

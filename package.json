@@ -1,0 +1,32 @@
+{
+  "name": "crunsh-lofi-automation",
+  "version": "1.0.0",
+  "description": "Fully automated lofi automation for \"Crunsh.\" channel via Youtube",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "keywords": [
+    "lofi",
+    "youtube",
+    "automation",
+    "video",
+    "ffmpeg"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.5",
+    "dotenv": "^16.3.1",
+    "googleapis": "^131.0.0",
+    "node-appwrite": "^13.0.0",
+    "airtable": "^0.12.2",
+    "@napi-rs/canvas": "^0.1.56",
+    "fluent-ffmpeg": "^2.1.2"
+  },
+  "devDependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0"
+  }
+}
