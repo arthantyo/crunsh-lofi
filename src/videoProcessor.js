@@ -10,69 +10,51 @@ dotenv.config();
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 /**
- * Combine audio with background video using FFmpeg
+ * Combine audio with background image using FFmpeg
  * @param {Object} options - Video generation options
  * @param {string} options.audioPath - Path to audio file
- * @param {string} options.backgroundVideo - Path to background video (optional)
+ * @param {string} options.backgroundImage - Path to background image
  * @param {string} options.overlayImage - Path to overlay image (optional)
- * @param {number} options.duration - Duration in seconds
+ * @param {string} options.format - Output format ('mp4' or 'avi', default: 'mp4')
  * @param {string} outputPath - Where to save the final video
  * @returns {Promise<string>} Path to the generated video
  */
 export async function createVideo(options, outputPath) {
   console.log("🎬 Creating video with FFmpeg...");
 
-  const {
-    audioPath,
-    backgroundVideo = process.env.DEFAULT_VIDEO_BACKGROUND,
-    overlayImage,
-    duration,
-  } = options;
+  const { audioPath, backgroundImage, overlayImage, format = "mp4" } = options;
 
   await fs.mkdir(path.dirname(outputPath), { recursive: true });
 
   return new Promise((resolve, reject) => {
     let command = ffmpeg();
 
-    // Add background video
-    if (backgroundVideo) {
-      console.log("   Using background video:", backgroundVideo);
-      command = command.input(backgroundVideo);
-
-      // Loop the background video if needed
-      command = command.inputOptions([
-        "-stream_loop",
-        "-1", // Loop indefinitely
-      ]);
+    // Add background image
+    if (backgroundImage) {
+      console.log("   Using background image:", backgroundImage);
+      command = command.input(backgroundImage);
+      // Loop the image for the duration
+      command = command.inputOptions(["-loop", "1"]);
     } else {
-      // Create a solid color background if no video provided
+      // Create a solid color background if no image provided
       console.log("   Creating solid background");
       command = command
-        .input("color=c=0x3d2a44:s=1920x1080:d=" + duration)
+        .input("color=c=0x3d2a44:s=1920x1080")
         .inputFormat("lavfi");
     }
 
     // Add audio
     command = command.input(audioPath);
 
+    // Determine codecs based on format
+    const videoCodec = format === "avi" ? "mpeg4" : "libx264";
+    const audioCodec = format === "avi" ? "mp3" : "aac";
+
     // Add overlay if provided
     if (overlayImage) {
       console.log("   Adding overlay image");
       command = command.input(overlayImage);
     }
-
-    // Set output options
-    command = command
-      .outputOptions([
-        "-c:v libx264",
-        "-preset medium",
-        "-crf 23",
-        "-c:a aac",
-        "-b:a 192k",
-        "-shortest", // Stop when shortest input ends
-        "-t " + duration, // Set duration
-      ])
-      .output(outputPath);
 
     // Add complex filter if overlay exists
     if (overlayImage) {
@@ -93,8 +75,45 @@ export async function createVideo(options, outputPath) {
         ],
         "out"
       );
+
+      // Set output options with explicit mapping for complex filter
+      command = command
+        .outputOptions([
+          "-map",
+          "[out]", // Map the video output from filter
+          "-map",
+          "1:a", // Map audio from input 1 (audio file)
+          "-c:v",
+          videoCodec,
+          "-preset",
+          "medium",
+          "-crf",
+          "23",
+          "-c:a",
+          audioCodec,
+          "-b:a",
+          "192k",
+          "-shortest", // Video duration matches audio duration
+        ])
+        .output(outputPath);
     } else {
-      command = command.videoFilter("scale=1920:1080");
+      // No overlay - simple video filter and standard mapping
+      command = command
+        .videoFilter("scale=1920:1080")
+        .outputOptions([
+          "-c:v",
+          videoCodec,
+          "-preset",
+          "medium",
+          "-crf",
+          "23",
+          "-c:a",
+          audioCodec,
+          "-b:a",
+          "192k",
+          "-shortest", // Video duration matches audio duration
+        ])
+        .output(outputPath);
     }
 
     // Progress reporting

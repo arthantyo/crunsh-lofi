@@ -117,13 +117,13 @@ export async function generateThumbnail(options, outputPath) {
     ctx.globalCompositeOperation = "lighten";
 
     // Scale down the image (50% of original size)
-    const scale = 0.4;
+    const scale = 1.3;
     const scaledWidth = sampleObject.width * scale;
     const scaledHeight = sampleObject.height * scale;
 
     // Position below the title, centered
     const objectX = (width - scaledWidth) / 2;
-    const objectY = height / 2 - 330; // Below the title
+    const objectY = height / 2 - 500; // Below the title
     ctx.drawImage(sampleObject, objectX, objectY, scaledWidth, scaledHeight);
 
     // Reset composite operation

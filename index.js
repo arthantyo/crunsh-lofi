@@ -8,6 +8,7 @@
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import readline from "readline";
 import { fetchContentPlan } from "./src/contentPlanning.js";
 import { generateThumbnail } from "./src/imageGenerator.js";
 import {
@@ -20,6 +21,10 @@ import {
   getVideoInfo,
 } from "./src/videoProcessor.js";
 import { publishVideo } from "./src/youtubeUploader.js";
+import {
+  startCallbackServer,
+  stopCallbackServer,
+} from "./src/callbackServer.js";
 
 // ES Module compatibility
 const __filename = fileURLToPath(import.meta.url);
@@ -28,15 +33,115 @@ const __dirname = path.dirname(__filename);
 dotenv.config();
 
 /**
+ * Create readline interface for interactive input
+ */
+function createReadlineInterface() {
+  return readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+}
+
+/**
+ * Prompt user for input
+ */
+function prompt(question) {
+  const rl = createReadlineInterface();
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer);
+    });
+  });
+}
+
+/**
+ * Interactive content plan input
+ */
+async function getContentPlanInteractively() {
+  console.log("\n📝 Interactive Content Plan Entry");
+  console.log("================================\n");
+
+  const title = await prompt("Video Title: ");
+  const description = await prompt("Description: ");
+  const subtitle = await prompt("Subtitle (for thumbnail, e.g., 'chill!'): ");
+  const tags = await prompt("Tags (comma-separated): ");
+  const audioStyle = await prompt(
+    "Audio Style (lofi-chill/lofi-jazz/lofi-ambient/lofi-upbeat) [lofi-chill]: "
+  );
+  const durationInput = await prompt("Duration in seconds [3600]: ");
+  const imagePrompt = await prompt("Image generation prompt (optional): ");
+  const audioPrompt = await prompt("Audio generation prompt (optional): ");
+
+  console.log("\n📑 Chapters (optional - press Enter to skip)");
+  console.log("Format: timestamp|title (e.g., 0:00|Introduction)");
+  console.log("Enter chapters one per line, empty line to finish:\n");
+
+  const chapters = [];
+  let chapterInput;
+  let chapterIndex = 1;
+
+  while (true) {
+    chapterInput = await prompt(
+      `Chapter ${chapterIndex} (or press Enter to finish): `
+    );
+    if (!chapterInput.trim()) break;
+
+    const [timestamp, chapterTitle] = chapterInput.split("|");
+    if (timestamp && chapterTitle) {
+      chapters.push({
+        timestamp: timestamp.trim(),
+        title: chapterTitle.trim(),
+      });
+      chapterIndex++;
+    }
+  }
+
+  return {
+    title: title || "Lofi Beats",
+    description: description || "Relaxing lofi music for study and chill",
+    subtitle: subtitle || "chill!",
+    tags: tags
+      ? tags.split(",").map((t) => t.trim())
+      : ["lofi", "study music", "chill beats"],
+    audioStyle: audioStyle || "lofi-chill",
+    duration: parseInt(durationInput) || 3600,
+    imagePrompt: imagePrompt || undefined,
+    audioPrompt: audioPrompt || undefined,
+    chapters: chapters.length >= 3 ? chapters : [],
+  };
+}
+
+/**
  * Main automation workflow
  */
 async function main() {
   console.log("🎵 Lofi Video Automation Started");
   console.log("================================\n");
 
+  // Start callback server for kie.ai
+  await startCallbackServer();
+
   try {
-    // Step 1: Fetch content planning
-    const contentPlan = await fetchContentPlan();
+    // Check if interactive mode is enabled
+    const useInteractive =
+      process.argv.includes("--interactive") || process.argv.includes("-i");
+
+    // Check if YouTube upload should be skipped
+    const skipUpload =
+      process.argv.includes("--no-upload") || process.argv.includes("-n");
+
+    let contentPlan;
+
+    if (useInteractive) {
+      // Step 1: Get content plan interactively
+      contentPlan = await getContentPlanInteractively();
+    } else {
+      // Step 1: Fetch content planning from API
+      console.log("💡 Tip: Use --interactive or -i flag for manual input\n");
+      contentPlan = await fetchContentPlan();
+    }
+
     console.log(`\n✓ Content Plan: "${contentPlan.title}"\n`);
 
     // Setup paths
@@ -48,22 +153,22 @@ async function main() {
     const thumbnailPath = path.join(tempDir, `thumbnail_${timestamp}.png`);
     const videoPath = path.join(outputDir, `lofi_video_${timestamp}.mp4`);
 
-    // Step 2: Generate thumbnail
-    console.log("\n--- Step 2: Generate Thumbnail ---");
-    await generateThumbnail(contentPlan, thumbnailPath);
+    // Step 2: Generate thumbnail and object image
+    console.log("\n--- Step 2: Generate Thumbnail & Object Image ---");
+    const { thumbnailPath: finalThumbnailPath, objectImagePath } =
+      await generateThumbnail(contentPlan, thumbnailPath);
 
     // Step 3: Generate audio
     console.log("\n--- Step 3: Generate Audio ---");
     await generateAudioFromPlan(contentPlan, audioPath);
     await validateAudioFile(audioPath);
 
-    // Step 4: Create video (stitch audio with background)
+    // Step 4: Create video (use thumbnail as background)
     console.log("\n--- Step 4: Create Video ---");
     await createVideo(
       {
         audioPath: audioPath,
-        backgroundVideo: process.env.DEFAULT_VIDEO_BACKGROUND,
-        duration: contentPlan.duration || 3600,
+        backgroundImage: finalThumbnailPath,
       },
       videoPath
     );
@@ -79,29 +184,46 @@ async function main() {
       validateChapters(contentPlan.chapters, videoInfo.duration);
     }
 
-    // Step 5: Upload to YouTube
-    console.log("\n--- Step 5: Upload to YouTube ---");
-    const uploadResult = await publishVideo(
-      contentPlan,
-      videoPath,
-      thumbnailPath
-    );
+    // Step 5: Upload to YouTube (if not skipped)
+    if (skipUpload) {
+      console.log("\n--- Step 5: Upload to YouTube (SKIPPED) ---");
+      console.log("💡 Upload skipped due to --no-upload flag");
 
-    console.log("\n================================");
-    console.log("✅ Automation Complete!");
-    console.log("================================");
-    console.log(`📺 Video URL: ${uploadResult.url}`);
-    console.log(`🎬 Video ID: ${uploadResult.videoId}`);
-    console.log(`📁 Local file: ${videoPath}`);
+      console.log("\n================================");
+      console.log("✅ Automation Complete!");
+      console.log("================================");
+      console.log(`📁 Video file: ${videoPath}`);
+      console.log(`🖼️ Thumbnail file: ${finalThumbnailPath}`);
+    } else {
+      console.log("\n--- Step 5: Upload to YouTube ---");
+      const uploadResult = await publishVideo(
+        contentPlan,
+        videoPath,
+        finalThumbnailPath
+      );
+
+      console.log("\n================================");
+      console.log("✅ Automation Complete!");
+      console.log("================================");
+      console.log(`📺 Video URL: ${uploadResult.url}`);
+      console.log(`🎬 Video ID: ${uploadResult.videoId}`);
+      console.log(`📁 Local file: ${videoPath}`);
+    }
   } catch (error) {
     console.error("\n❌ Error in automation workflow:");
     console.error(error.message);
     console.error(error.stack);
     process.exit(1);
+  } finally {
+    // Stop the callback server
+    await stopCallbackServer();
   }
 }
 
 // Run the automation
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
-}
+main().catch((error) => {
+  console.error("\n❌ Fatal error:");
+  console.error(error.message);
+  console.error(error.stack);
+  process.exit(1);
+});

@@ -6,7 +6,11 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js"
+    "dev": "node --watch index.js",
+    "interactive": "node index.js --interactive",
+    "interactive-no-upload": "node index.js --interactive --no-upload",
+    "no-upload": "node index.js --no-upload",
+    "youtube-auth": "node scripts/get-youtube-token.js"
   },
   "keywords": [
     "lofi",
@@ -18,13 +22,15 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.56",
+    "airtable": "^0.12.2",
     "axios": "^1.6.5",
     "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "fluent-ffmpeg": "^2.1.2",
     "googleapis": "^131.0.0",
     "node-appwrite": "^13.0.0",
-    "airtable": "^0.12.2",
-    "@napi-rs/canvas": "^0.1.56",
-    "fluent-ffmpeg": "^2.1.2"
+    "openai": "^6.15.0"
   },
   "devDependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0"

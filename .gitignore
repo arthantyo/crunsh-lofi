@@ -6,6 +6,8 @@ temp/
 *.mp3
 *.jpg
 *.png
+*.avi
 !test-output-*.png
+test-output-*.png
 credentials.json
 token.json
