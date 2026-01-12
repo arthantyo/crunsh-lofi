@@ -23,6 +23,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@napi-rs/canvas": "^0.1.56",
     "airtable": "^0.12.2",
     "axios": "^1.6.5",
