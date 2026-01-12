@@ -10,7 +10,8 @@
     "interactive": "node index.js --interactive",
     "interactive-no-upload": "node index.js --interactive --no-upload",
     "no-upload": "node index.js --no-upload",
-    "youtube-auth": "node scripts/get-youtube-token.js"
+    "youtube-auth": "node scripts/get-youtube-token.js",
+    "setup-airtable": "node scripts/setup-airtable.js"
   },
   "keywords": [
     "lofi",
@@ -29,7 +30,6 @@
     "express": "^4.18.2",
     "fluent-ffmpeg": "^2.1.2",
     "googleapis": "^131.0.0",
-    "node-appwrite": "^13.0.0",
     "openai": "^6.15.0"
   },
   "devDependencies": {

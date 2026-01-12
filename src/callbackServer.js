@@ -1,10 +1,19 @@
 import express from "express";
 import dotenv from "dotenv";
+import Airtable from "airtable";
+import path from "path";
+import { fileURLToPath } from "url";
 
 dotenv.config();
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
 app.use(express.json());
+
+// Serve static files from public directory
+app.use(express.static(path.join(__dirname, "../public")));
 
 // Store pending tasks and their resolvers
 const pendingTasks = new Map();
@@ -76,6 +85,58 @@ app.get("/health", (req, res) => {
   });
 });
 
+/**
+ * Create new content plan in Airtable
+ */
+app.post("/api/content-plan", async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      audioStyle,
+      duration,
+      tags,
+      imagePrompt,
+      chapters,
+    } = req.body;
+
+    // Validate required fields
+    if (!title) {
+      return res.status(400).json({ error: "Title is required" });
+    }
+
+    // Initialize Airtable
+    const base = new Airtable({
+      apiKey: process.env.AIRTABLE_PERSONAL_ACCESS_TOKEN,
+    }).base(process.env.AIRTABLE_BASE_ID);
+
+    // Create record in Airtable
+    const record = await base(process.env.AIRTABLE_TABLE_NAME).create({
+      Title: title,
+      Description: description || "",
+      AudioStyle: audioStyle || "lofi-chill",
+      Duration: duration || 3600,
+      Tags: tags || "",
+      ImagePrompt: imagePrompt || "",
+      Chapters: chapters && chapters.length > 0 ? JSON.stringify(chapters) : "",
+      Status: "Pending",
+    });
+
+    console.log(`✓ Created content plan: ${title} (ID: ${record.id})`);
+
+    res.json({
+      success: true,
+      recordId: record.id,
+      title: title,
+    });
+  } catch (error) {
+    console.error("Error creating content plan:", error);
+    res.status(500).json({
+      error: error.message || "Failed to create content plan",
+    });
+  }
+});
+
 let server;
 
 /**
@@ -87,6 +148,7 @@ export function startCallbackServer(port = 3000) {
       server = app.listen(port, () => {
         console.log(`🚀 Callback server running on http://localhost:${port}`);
         console.log(`   Callback URL: http://localhost:${port}/api/callback`);
+        console.log(`   📋 Content Plan UI: http://localhost:${port}`);
         resolve(server);
       });
 

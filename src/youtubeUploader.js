@@ -240,3 +240,25 @@ export async function getTokenFromCode(code) {
     throw error;
   }
 }
+
+/**
+ * Test video upload functionality
+ */
+export async function testUpload() {
+  const sampleVideoPath = path.resolve("assets/sample-lofi/lofi.mp4");
+
+  const videoData = {
+    filePath: sampleVideoPath,
+    title: "Test Upload - Lofi Sample",
+    description: "This is a test upload using the sample lofi video.",
+    tags: ["test", "lofi", "sample"],
+    privacyStatus: "private",
+  };
+
+  try {
+    const result = await uploadVideo(videoData);
+    console.log("Test upload successful:", result);
+  } catch (error) {
+    console.error("Test upload failed:", error);
+  }
+}

@@ -15,10 +15,10 @@ const IS_LOCALHOST =
 
 /**
  * Poll kie.ai for task completion (used for localhost development)
- * Follows best practices:
- * - First 30s: poll every 2-3 seconds
- * - After 30s: poll every 5-10 seconds
- * - After 2 min: poll every 15-30 seconds
+ * Optimized intervals to reduce API calls:
+ * - First 1 min: poll every 5 seconds
+ * - After 1 min: poll every 15 seconds
+ * - After 3 min: poll every 45 seconds
  * - Max duration: 15 minutes
  */
 async function pollForCompletion(taskId) {
@@ -59,15 +59,15 @@ async function pollForCompletion(taskId) {
       const elapsed = Date.now() - startTime;
       let waitTime;
 
-      if (elapsed < 30 * 1000) {
-        // First 30 seconds: 2-3 seconds
-        waitTime = 2500;
-      } else if (elapsed < 2 * 60 * 1000) {
-        // After 30s to 2 min: 5-10 seconds
-        waitTime = 7500;
+      if (elapsed < 60 * 1000) {
+        // First 1 minute: 5 seconds
+        waitTime = 5000;
+      } else if (elapsed < 3 * 60 * 1000) {
+        // After 1 min to 3 min: 15 seconds
+        waitTime = 15000;
       } else {
-        // After 2 min: 15-30 seconds
-        waitTime = 20000;
+        // After 3 min: 45 seconds
+        waitTime = 45000;
       }
 
       console.log(
