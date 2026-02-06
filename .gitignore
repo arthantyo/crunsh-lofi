@@ -3,10 +3,6 @@ node_modules/
 output/
 temp/
 *.mp4
-*.mp3
-*.jpg
-*.png
-*.avi
 !test-output-*.png
 test-output-*.png
 credentials.json
