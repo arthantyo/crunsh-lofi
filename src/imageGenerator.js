@@ -8,10 +8,42 @@ dotenv.config();
 
 const KIE_API_KEY = process.env.KIE_AI_API_KEY;
 const KIE_ENDPOINT = "https://api.kie.ai/api/v1/jobs/createTask";
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY = 2000; // 2 seconds
 const CALLBACK_URL =
   process.env.CALLBACK_URL || "http://localhost:3000/api/callback";
 const IS_LOCALHOST =
   CALLBACK_URL.includes("localhost") || CALLBACK_URL.includes("127.0.0.1");
+
+/**
+ * Retry helper with exponential backoff
+ */
+async function retryWithBackoff(fn, retries = MAX_RETRIES) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const isLastAttempt = i === retries - 1;
+      const isServerError =
+        error.response?.status >= 500 ||
+        error.code === "ECONNABORTED" ||
+        error.code === "ETIMEDOUT" ||
+        error.message.includes("520") ||
+        error.message.includes("522");
+
+      if (isLastAttempt || !isServerError) {
+        throw error;
+      }
+
+      const delay = INITIAL_RETRY_DELAY * Math.pow(2, i);
+      console.log(
+        `⚠ API error (attempt ${i + 1}/${retries}): ${error.message}`,
+      );
+      console.log(`   Retrying in ${delay / 1000}s...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
 
 /**
  * Poll kie.ai for task completion (used for localhost development)
@@ -37,8 +69,10 @@ async function pollForCompletion(taskId) {
         {
           headers: {
             Authorization: `Bearer ${KIE_API_KEY}`,
+            Accept: "application/json",
+            "User-Agent": "axios/1.6.0",
           },
-        }
+        },
       );
 
       if (response.data.code !== 200) {
@@ -71,7 +105,7 @@ async function pollForCompletion(taskId) {
       }
 
       console.log(
-        `   Attempt ${attempt}: ${state}... (next check in ${waitTime / 1000}s)`
+        `   Attempt ${attempt}: ${state}... (next check in ${waitTime / 1000}s)`,
       );
       await new Promise((resolve) => setTimeout(resolve, waitTime));
     } catch (error) {
@@ -100,24 +134,29 @@ export async function generateImage(prompt, outputPath, options = {}) {
   console.log("🎨 Generating image with kie.ai...");
 
   try {
-    const response = await axios.post(
-      KIE_ENDPOINT,
-      {
-        model: "gpt-image/1.5-text-to-image",
-        callBackUrl: CALLBACK_URL,
-        input: {
-          prompt: prompt,
-          aspect_ratio: options.size || "1:1",
-          quality: options.quality || "medium",
+    const response = await retryWithBackoff(async () => {
+      return await axios.post(
+        KIE_ENDPOINT,
+        {
+          model: "gpt-image/1.5-text-to-image",
+          callBackUrl: CALLBACK_URL,
+          input: {
+            prompt: prompt,
+            aspect_ratio: options.size || "1:1",
+            quality: options.quality || "medium",
+          },
         },
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${KIE_API_KEY}`,
-          "Content-Type": "application/json",
+        {
+          headers: {
+            Authorization: `Bearer ${KIE_API_KEY}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            "User-Agent": "axios/1.6.0",
+          },
+          timeout: 30000, // 30 second timeout
         },
-      }
-    );
+      );
+    });
 
     // Get task ID from response
     const taskId =
@@ -164,13 +203,25 @@ export async function generateImage(prompt, outputPath, options = {}) {
     console.log(`✓ Image saved to ${outputPath}`);
     return outputPath;
   } catch (error) {
-    console.error("Error generating image:", error.message);
+    console.error("❌ Error generating image:", error.message);
+
     if (error.response) {
-      console.error("API Error:", error.response.data);
+      const status = error.response.status;
+      console.error(`   API Error (${status}):`, error.response.data);
+
+      if (status >= 500) {
+        console.error(
+          "   ⚠ Server error - kie.ai service may be temporarily down",
+        );
+      } else if (status === 401) {
+        console.error("   ⚠ Authentication failed - check KIE_AI_API_KEY");
+      } else if (status === 429) {
+        console.error("   ⚠ Rate limit exceeded - too many requests");
+      }
     }
 
     // Fallback: create placeholder with message
-    console.log("⚠ Using fallback image generation");
+    console.log("⚠ Using fallback Canvas-based image generation");
     return await createFallbackImage(outputPath, prompt);
   }
 }
@@ -183,7 +234,7 @@ async function createFallbackImage(outputPath, prompt) {
   const { generateThumbnail } = await import("./canvasGenerator.js");
   return await generateThumbnail(
     { title: "Lofi Beats", subtitle: prompt.substring(0, 50) },
-    outputPath
+    outputPath,
   );
 }
 
@@ -194,11 +245,27 @@ async function createFallbackImage(outputPath, prompt) {
 export async function generateObjectImage(contentPlan, outputPath) {
   console.log("🎨 Generating object image with kie.ai...");
 
-  const prompt =
-    contentPlan.imagePrompt ||
-    `A single ${
-      contentPlan.title || "object"
-    }, isolated on transparent background, lofi aesthetic style, clean, minimalist, centered composition, 1024x1024`;
+  // Base lofi aesthetic styling with transparent background
+  const lofiStyle =
+    "isolated on transparent background, lofi aesthetic style, clean, minimalist, centered composition, soft colors, cozy vibe, 1024x1024";
+
+  let prompt;
+  if (contentPlan.imagePrompt) {
+    // If custom prompt provided, enhance it with lofi aesthetic unless it already mentions style
+    const hasStyleKeywords = /aesthetic|style|lofi|minimalist/i.test(
+      contentPlan.imagePrompt,
+    );
+    if (hasStyleKeywords) {
+      // User specified their own style, use as-is
+      prompt = contentPlan.imagePrompt;
+    } else {
+      // Add lofi aesthetic to custom prompt
+      prompt = `${contentPlan.imagePrompt}, ${lofiStyle}`;
+    }
+  } else {
+    // Default prompt
+    prompt = `A single ${contentPlan.title || "object"}, ${lofiStyle}`;
+  }
 
   try {
     return await generateImage(prompt, outputPath, {
@@ -222,18 +289,17 @@ export async function generateThumbnail(contentPlan, thumbnailPath) {
   const timestamp = Date.now();
   const objectPath = path.join(
     path.dirname(thumbnailPath),
-    `object_${timestamp}.png`
+    `object_${timestamp}.png`,
   );
 
   const generatedObjectPath = await generateObjectImage(
     contentPlan,
-    objectPath
+    objectPath,
   );
 
   // Use canvas generator to create the final thumbnail
-  const { generateThumbnail: createThumbnail } = await import(
-    "./canvasGenerator.js"
-  );
+  const { generateThumbnail: createThumbnail } =
+    await import("./canvasGenerator.js");
 
   await createThumbnail(
     {
@@ -241,7 +307,7 @@ export async function generateThumbnail(contentPlan, thumbnailPath) {
       subtitle: contentPlan.subtitle || "chill!",
       sampleObject: generatedObjectPath || undefined, // Will use default if null
     },
-    thumbnailPath
+    thumbnailPath,
   );
 
   // Return both the thumbnail and the object image path

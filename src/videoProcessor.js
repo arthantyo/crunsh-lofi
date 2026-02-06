@@ -1,13 +1,15 @@
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
+import ffprobeInstaller from "@ffprobe-installer/ffprobe";
 import fs from "fs/promises";
 import path from "path";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-// Set ffmpeg path
+// Set ffmpeg and ffprobe paths
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+ffmpeg.setFfprobePath(ffprobeInstaller.path);
 
 /**
  * Combine audio with background image using FFmpeg
@@ -73,7 +75,7 @@ export async function createVideo(options, outputPath) {
             outputs: "out",
           },
         ],
-        "out"
+        "out",
       );
 
       // Set output options with explicit mapping for complex filter
@@ -147,7 +149,7 @@ export async function createVideo(options, outputPath) {
 export function formatChapters(chapters) {
   if (!chapters || chapters.length < 3) {
     console.warn(
-      "⚠ Need at least 3 chapters for YouTube. Chapters won't be added."
+      "⚠ Need at least 3 chapters for YouTube. Chapters won't be added.",
     );
     return "";
   }
@@ -189,7 +191,7 @@ export function validateChapters(chapters, videoDuration) {
       // Last chapter should be at least 10 seconds from the end
       if (videoDuration - timeSeconds < 10) {
         console.error(
-          `❌ Last chapter "${chapter.title}" is less than 10 seconds from end!`
+          `❌ Last chapter "${chapter.title}" is less than 10 seconds from end!`,
         );
         return false;
       }
@@ -233,5 +235,43 @@ export async function getVideoInfo(videoPath) {
         });
       }
     });
+  });
+}
+
+/**
+ * Stitch an image and audio into a video (mp4)
+ * @param {string} imagePath - Path to the image file
+ * @param {string} audioPath - Path to the audio file
+ * @param {string} outputPath - Path to save the resulting video
+ * @param {Object} [options] - Optional ffmpeg options (e.g., duration)
+ * @returns {Promise<string>} Path to the generated video
+ */
+export async function stitchImageAndAudio(
+  imagePath,
+  audioPath,
+  outputPath,
+  options = {},
+) {
+  return new Promise((resolve, reject) => {
+    ffmpeg()
+      .addInput(imagePath)
+      .loop(options.duration || 10) // Loop image to match audio duration if not specified
+      .addInput(audioPath)
+      .outputOptions([
+        "-c:v libx264",
+        "-c:a aac",
+        "-shortest",
+        "-pix_fmt yuv420p",
+        "-movflags +faststart",
+      ])
+      .on("end", () => {
+        console.log(`✅ Video created at ${outputPath}`);
+        resolve(outputPath);
+      })
+      .on("error", (err) => {
+        console.error("FFmpeg error:", err.message);
+        reject(err);
+      })
+      .save(outputPath);
   });
 }

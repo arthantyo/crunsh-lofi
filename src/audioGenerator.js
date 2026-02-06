@@ -9,6 +9,8 @@ dotenv.config();
 
 const KIE_API_KEY = process.env.KIE_AI_API_KEY;
 const KIE_AUDIO_ENDPOINT = "https://api.kie.ai/api/v1/generate";
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY = 2000; // 2 seconds
 const CALLBACK_URL =
   process.env.CALLBACK_URL || "http://localhost:3000/api/callback";
 const IS_LOCALHOST =
@@ -18,6 +20,36 @@ const IS_LOCALHOST =
 const genAI = process.env.GEMINI_API_KEY
   ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
   : null;
+
+/**
+ * Retry helper with exponential backoff
+ */
+async function retryWithBackoff(fn, retries = MAX_RETRIES) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const isLastAttempt = i === retries - 1;
+      const isServerError =
+        error.response?.status >= 500 ||
+        error.code === "ECONNABORTED" ||
+        error.code === "ETIMEDOUT" ||
+        error.message.includes("520") ||
+        error.message.includes("522");
+
+      if (isLastAttempt || !isServerError) {
+        throw error;
+      }
+
+      const delay = INITIAL_RETRY_DELAY * Math.pow(2, i);
+      console.log(
+        `⚠ API error (attempt ${i + 1}/${retries}): ${error.message}`,
+      );
+      console.log(`   Retrying in ${delay / 1000}s...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
 
 /**
  * Poll kie.ai for task completion (used for localhost development)
@@ -43,8 +75,10 @@ async function pollForCompletion(taskId) {
         {
           headers: {
             Authorization: `Bearer ${KIE_API_KEY}`,
+            Accept: "application/json",
+            "User-Agent": "axios/1.6.0",
           },
-        }
+        },
       );
 
       if (response.data.code !== 200) {
@@ -90,7 +124,7 @@ async function pollForCompletion(taskId) {
       console.log(
         `   Attempt ${attempt}: ${status}... (next check in ${
           waitTime / 1000
-        }s)`
+        }s)`,
       );
       await new Promise((resolve) => setTimeout(resolve, waitTime));
     } catch (error) {
@@ -121,38 +155,42 @@ async function pollForCompletion(taskId) {
 export async function generateAudio(options, outputPath) {
   console.log("🎵 Generating lofi audio with kie.ai (Suno)...");
   console.log(
-    `   Style: ${options.style}, Title: ${options.title || "Untitled"}`
+    `   Style: ${options.style}, Title: ${options.title || "Untitled"}`,
   );
 
   try {
-    const response = await axios.post(
-      KIE_AUDIO_ENDPOINT,
-      {
-        model: "V4",
-        callBackUrl: CALLBACK_URL,
-        prompt:
-          options.prompt ||
-          `Relaxing lofi hip hop instrumental with soft beats, ambient sounds, and chill vibes perfect for studying or relaxing`,
-        customMode: true,
-        instrumental: true, // No vocals for lofi beats
-        style: mapLofiStyleToSunoStyle(options.style),
-        title: options.title || "Lofi Beats to Chill",
-        vocalGender: "m",
-        styleWeight: 0.65,
-        weirdnessConstraint: 0.65,
-        audioWeight: 0.65,
-        personaId: "persona_123",
-        negativeTags:
-          "Heavy Metal, Upbeat Drums, Loud, Aggressive, Fast Tempo, Vocals",
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${KIE_API_KEY}`,
-          "Content-Type": "application/json",
+    const response = await retryWithBackoff(async () => {
+      return await axios.post(
+        KIE_AUDIO_ENDPOINT,
+        {
+          model: "V4",
+          callBackUrl: CALLBACK_URL,
+          prompt:
+            options.prompt ||
+            `Relaxing lofi hip hop instrumental with soft beats, ambient sounds, and chill vibes perfect for studying or relaxing`,
+          customMode: true,
+          instrumental: true, // No vocals for lofi beats
+          style: mapLofiStyleToSunoStyle(options.style),
+          title: options.title || "Lofi Beats to Chill",
+          vocalGender: "m",
+          styleWeight: 0.65,
+          weirdnessConstraint: 0.65,
+          audioWeight: 0.65,
+          personaId: "persona_123",
+          negativeTags:
+            "Heavy Metal, Upbeat Drums, Loud, Aggressive, Fast Tempo, Vocals",
         },
-        timeout: 120000, // 2 minutes timeout for audio generation
-      }
-    );
+        {
+          headers: {
+            Authorization: `Bearer ${KIE_API_KEY}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            "User-Agent": "axios/1.6.0",
+          },
+          timeout: 120000, // 2 minutes timeout for audio generation
+        },
+      );
+    });
 
     // Check response code
     if (response.data.code !== 200) {
@@ -201,10 +239,26 @@ export async function generateAudio(options, outputPath) {
     console.log(`✓ Audio saved to ${outputPath}`);
     return outputPath;
   } catch (error) {
-    console.error("Error generating audio:", error.message);
+    console.error("❌ Error generating audio:", error.message);
 
     if (error.response) {
-      console.error("API Error:", error.response.data);
+      const status = error.response.status;
+      console.error(`   API Error (${status}):`, error.response.data);
+
+      if (status >= 500) {
+        console.error(
+          "   ⚠ Server error - kie.ai service may be temporarily down",
+        );
+        console.error(
+          "   💡 Suggestion: Try again in a few minutes or use a sample audio file",
+        );
+      } else if (status === 401) {
+        console.error("   ⚠ Authentication failed - check KIE_AI_API_KEY");
+      } else if (status === 429) {
+        console.error("   ⚠ Rate limit exceeded - too many requests");
+      }
+    } else if (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT") {
+      console.error("   ⚠ Request timeout - server took too long to respond");
     }
 
     throw new Error(`Failed to generate audio: ${error.message}`);
@@ -232,7 +286,7 @@ async function generateAIFoodPrompt(foodName) {
   if (!genAI) {
     console.warn(
       "⚠️  Gemini API key not found. Using generic prompt for",
-      foodName
+      foodName,
     );
     return `Relaxing lofi hip hop inspired by ${foodName} - smooth beats, warm textures, ambient sounds perfect for studying or relaxing`;
   }
@@ -244,7 +298,7 @@ async function generateAIFoodPrompt(foodName) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(
-        `🤖 Generating AI-powered lofi vibe for "${foodName}"... (attempt ${attempt}/${maxRetries})`
+        `🤖 Generating AI-powered lofi vibe for "${foodName}"... (attempt ${attempt}/${maxRetries})`,
       );
 
       const model = genAI.getGenerativeModel({
@@ -306,7 +360,7 @@ Generate a unique and creative lofi music prompt for: ${foodName}`;
         console.warn(
           `⚠️  API error (attempt ${attempt}/${maxRetries}): ${
             error.message.split("\n")[0]
-          }`
+          }`,
         );
         console.log(`   Retrying in ${waitTime / 1000} seconds...`);
         await new Promise((resolve) => setTimeout(resolve, waitTime));
@@ -358,7 +412,7 @@ export async function validateAudioFile(filePath) {
       throw new Error("Audio file is empty");
     }
     console.log(
-      `✓ Audio file validated: ${(stats.size / 1024 / 1024).toFixed(2)} MB`
+      `✓ Audio file validated: ${(stats.size / 1024 / 1024).toFixed(2)} MB`,
     );
     return true;
   } catch (error) {
