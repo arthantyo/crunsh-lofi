@@ -6,6 +6,13 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+interface ThumbnailOptions {
+  title?: string;
+  subtitle?: string;
+  backgroundImage?: string;
+  sampleObject?: string;
+}
+
 // Register custom fonts (optional - will use fallbacks if not found)
 try {
   // Try to register Instrument Serif and Plus Jakarta Sans if font files exist
@@ -15,7 +22,7 @@ try {
   try {
     GlobalFonts.registerFromPath(
       path.join(fontsDir, "InstrumentSerif-Regular.ttf"),
-      "Instrument Serif"
+      "Instrument Serif",
     );
   } catch (e) {
     console.log("Instrument Serif font not found, using serif fallback");
@@ -24,7 +31,7 @@ try {
   try {
     GlobalFonts.registerFromPath(
       path.join(fontsDir, "PlusJakartaSans-ExtraBold.ttf"),
-      "Plus Jakarta Sans"
+      "Plus Jakarta Sans",
     );
   } catch (e) {
     console.log("Plus Jakarta Sans font not found, using sans-serif fallback");
@@ -42,7 +49,10 @@ try {
  * @param {string} outputPath - Where to save the thumbnail
  * @returns {Promise<string>} Path to the generated thumbnail
  */
-export async function generateThumbnail(options, outputPath) {
+export async function generateThumbnail(
+  options: ThumbnailOptions,
+  outputPath: string,
+): Promise<string> {
   console.log("🎨 Generating thumbnail with Canvas API...");
 
   const width = 1920;
@@ -78,7 +88,7 @@ export async function generateThumbnail(options, outputPath) {
       __dirname,
       "..",
       "assets",
-      "frame-grain.png"
+      "frame-grain.png",
     );
     const frameGrain = await loadImage(frameGrainPath);
 
@@ -156,41 +166,18 @@ export async function generateThumbnail(options, outputPath) {
 /**
  * Draw a gradient background
  */
-function drawBackground(ctx, width, height) {
+function drawBackground(ctx: any, width: number, height: number): void {
   ctx.fillStyle = "#F7E1A4";
   ctx.fillRect(0, 0, width, height);
 }
 
 /**
- * Draw decorative lofi-style elements
- */
-function drawLofiElements(ctx, width, height) {
-  // Vinyl record
-  //   ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
-  //   ctx.beginPath();
-  //   ctx.arc(150, 150, 80, 0, Math.PI * 2);
-  //   ctx.fill();
-
-  //   ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
-  //   ctx.beginPath();
-  //   ctx.arc(150, 150, 30, 0, Math.PI * 2);
-  //   ctx.fill();
-
-  // Music notes
-  ctx.font = "48px Arial";
-  ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
-  ctx.fillText("♪", width / 2 + 320, 150);
-  ctx.fillText("♫", width / 2 + 320, 200);
-
-  // Bottom accent line
-  ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
-  ctx.fillRect(0, height - 10, width, 10);
-}
-
-/**
  * Create a simple overlay image for video
  */
-export async function generateVideoOverlay(text, outputPath) {
+export async function generateVideoOverlay(
+  text: string,
+  outputPath: string,
+): Promise<string> {
   const width = 1920;
   const height = 1080;
   const canvas = createCanvas(width, height);

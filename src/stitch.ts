@@ -1,9 +1,13 @@
-import { createVideo } from "./src/videoProcessor.js";
+import { createVideo } from "./videoProcessor.js";
 import fs from "fs/promises";
 import path from "path";
 import inquirer from "inquirer";
 
-async function selectFile(folder, ext, message) {
+async function selectFile(
+  folder: string,
+  ext: string,
+  message: string,
+): Promise<string> {
   const files = (await fs.readdir(folder)).filter((f) =>
     f.toLowerCase().endsWith(ext),
   );
@@ -19,7 +23,7 @@ async function selectFile(folder, ext, message) {
   return path.join(folder, file);
 }
 
-async function main() {
+async function main(): Promise<void> {
   const tempDir = path.resolve("./temp");
   const outputDir = path.resolve("./output");
   try {
@@ -46,7 +50,7 @@ async function main() {
     );
     console.log(`Done! Video saved to ${output}`);
   } catch (err) {
-    console.error("Failed to stitch:", err.message);
+    console.error("Failed to stitch:", (err as Error).message);
     process.exit(1);
   }
 }

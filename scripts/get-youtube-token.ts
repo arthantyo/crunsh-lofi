@@ -1,10 +1,5 @@
 #!/usr/bin/env node
 
-/**
- * Helper script to get YouTube OAuth refresh token
- * Run: node scripts/get-youtube-token.js
- */
-
 import { generateAuthUrl, getTokenFromCode } from "../src/youtubeUploader.js";
 import readline from "readline";
 import dotenv from "dotenv";
@@ -16,7 +11,7 @@ const rl = readline.createInterface({
   output: process.stdout,
 });
 
-function prompt(question) {
+function prompt(question: string): Promise<string> {
   return new Promise((resolve) => {
     rl.question(question, (answer) => {
       resolve(answer);
@@ -24,7 +19,7 @@ function prompt(question) {
   });
 }
 
-async function main() {
+async function main(): Promise<void> {
   console.log("\n🔐 YouTube OAuth Token Generator");
   console.log("=================================\n");
 
@@ -32,7 +27,7 @@ async function main() {
   if (!process.env.YOUTUBE_CLIENT_ID || !process.env.YOUTUBE_CLIENT_SECRET) {
     console.error("❌ Missing YouTube credentials in .env file");
     console.error(
-      "Please add YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET first\n"
+      "Please add YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET first\n",
     );
     console.log("See docs/YOUTUBE_API_SETUP.md for setup instructions");
     process.exit(1);
@@ -70,7 +65,7 @@ async function main() {
 
     rl.close();
   } catch (error) {
-    console.error("\n❌ Error:", error.message);
+    console.error("\n❌ Error:", (error as Error).message);
     rl.close();
     process.exit(1);
   }

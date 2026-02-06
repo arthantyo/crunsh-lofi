@@ -15,14 +15,55 @@ const CALLBACK_URL =
 const IS_LOCALHOST =
   CALLBACK_URL.includes("localhost") || CALLBACK_URL.includes("127.0.0.1");
 
+interface ImageGenerationOptions {
+  size?: string;
+  quality?: string;
+  isEnhance?: boolean;
+}
+
+interface ContentPlan {
+  title?: string;
+  subtitle?: string;
+  imagePrompt?: string;
+}
+
+interface ThumbnailResult {
+  thumbnailPath: string;
+  objectImagePath: string | null;
+}
+
+interface KieApiResponse {
+  code: number;
+  message: string;
+  data: {
+    state: string;
+    resultJson: string;
+    failCode: string;
+    failMsg: string;
+  };
+}
+
+interface TaskResult {
+  resultUrls?: string[];
+  url?: string;
+  imageUrl?: string;
+  image_url?: string;
+  output?: {
+    url: string;
+  };
+}
+
 /**
  * Retry helper with exponential backoff
  */
-async function retryWithBackoff(fn, retries = MAX_RETRIES) {
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  retries: number = MAX_RETRIES,
+): Promise<T> {
   for (let i = 0; i < retries; i++) {
     try {
       return await fn();
-    } catch (error) {
+    } catch (error: any) {
       const isLastAttempt = i === retries - 1;
       const isServerError =
         error.response?.status >= 500 ||
@@ -43,6 +84,7 @@ async function retryWithBackoff(fn, retries = MAX_RETRIES) {
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
+  throw new Error("Retries exhausted");
 }
 
 /**
@@ -53,7 +95,7 @@ async function retryWithBackoff(fn, retries = MAX_RETRIES) {
  * - After 3 min: poll every 45 seconds
  * - Max duration: 15 minutes
  */
-async function pollForCompletion(taskId) {
+async function pollForCompletion(taskId: string): Promise<TaskResult> {
   console.log("⏳ Polling for completion (localhost mode)...");
 
   const startTime = Date.now();
@@ -64,7 +106,7 @@ async function pollForCompletion(taskId) {
     attempt++;
 
     try {
-      const response = await axios.get(
+      const response = await axios.get<KieApiResponse>(
         `https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${taskId}`,
         {
           headers: {
@@ -83,7 +125,7 @@ async function pollForCompletion(taskId) {
 
       if (state === "success") {
         // Parse resultJson to get the URLs
-        const result = JSON.parse(resultJson);
+        const result: TaskResult = JSON.parse(resultJson);
         return result; // Return the parsed result
       } else if (state === "fail") {
         throw new Error(`Task failed: ${failMsg} (${failCode})`);
@@ -91,7 +133,7 @@ async function pollForCompletion(taskId) {
 
       // Calculate elapsed time and determine wait interval
       const elapsed = Date.now() - startTime;
-      let waitTime;
+      let waitTime: number;
 
       if (elapsed < 60 * 1000) {
         // First 1 minute: 5 seconds
@@ -108,7 +150,7 @@ async function pollForCompletion(taskId) {
         `   Attempt ${attempt}: ${state}... (next check in ${waitTime / 1000}s)`,
       );
       await new Promise((resolve) => setTimeout(resolve, waitTime));
-    } catch (error) {
+    } catch (error: any) {
       if (
         error.message.startsWith("Task failed") ||
         error.message.startsWith("API error")
@@ -127,15 +169,19 @@ async function pollForCompletion(taskId) {
  * Generate image using kie.ai API
  * @param {string} prompt - The image generation prompt
  * @param {string} outputPath - Where to save the generated image
- * @param {Object} options - Additional options
+ * @param {ImageGenerationOptions} options - Additional options
  * @returns {Promise<string>} Path to the generated image
  */
-export async function generateImage(prompt, outputPath, options = {}) {
+export async function generateImage(
+  prompt: string,
+  outputPath: string,
+  options: ImageGenerationOptions = {},
+): Promise<string> {
   console.log("🎨 Generating image with kie.ai...");
 
   try {
     const response = await retryWithBackoff(async () => {
-      return await axios.post(
+      return await axios.post<any>(
         KIE_ENDPOINT,
         {
           model: "gpt-image/1.5-text-to-image",
@@ -171,7 +217,7 @@ export async function generateImage(prompt, outputPath, options = {}) {
     console.log(`⏳ Task created: ${taskId}`);
 
     // Use polling for localhost, callbacks for production
-    let result;
+    let result: TaskResult;
     if (IS_LOCALHOST) {
       result = await pollForCompletion(taskId);
     } else {
@@ -193,7 +239,7 @@ export async function generateImage(prompt, outputPath, options = {}) {
 
     // Download the generated image
     console.log("📥 Downloading generated image...");
-    const imageResponse = await axios.get(imageUrl, {
+    const imageResponse = await axios.get<Buffer>(imageUrl, {
       responseType: "arraybuffer",
     });
 
@@ -202,7 +248,7 @@ export async function generateImage(prompt, outputPath, options = {}) {
 
     console.log(`✓ Image saved to ${outputPath}`);
     return outputPath;
-  } catch (error) {
+  } catch (error: any) {
     console.error("❌ Error generating image:", error.message);
 
     if (error.response) {
@@ -229,7 +275,10 @@ export async function generateImage(prompt, outputPath, options = {}) {
 /**
  * Fallback image creation if API fails
  */
-async function createFallbackImage(outputPath, prompt) {
+async function createFallbackImage(
+  outputPath: string,
+  prompt: string,
+): Promise<string> {
   // This will be handled by the Canvas API module
   const { generateThumbnail } = await import("./canvasGenerator.js");
   return await generateThumbnail(
@@ -242,14 +291,17 @@ async function createFallbackImage(outputPath, prompt) {
  * Generate object image for thumbnail using kie.ai
  * This generates just the object (burger, cat, etc.) that will be composited on the canvas
  */
-export async function generateObjectImage(contentPlan, outputPath) {
+export async function generateObjectImage(
+  contentPlan: ContentPlan,
+  outputPath: string,
+): Promise<string | null> {
   console.log("🎨 Generating object image with kie.ai...");
 
   // Base lofi aesthetic styling with transparent background
   const lofiStyle =
     "isolated on transparent background, lofi aesthetic style, clean, minimalist, centered composition, soft colors, cozy vibe, 1024x1024";
 
-  let prompt;
+  let prompt: string;
   if (contentPlan.imagePrompt) {
     // If custom prompt provided, enhance it with lofi aesthetic unless it already mentions style
     const hasStyleKeywords = /aesthetic|style|lofi|minimalist/i.test(
@@ -282,7 +334,10 @@ export async function generateObjectImage(contentPlan, outputPath) {
  * Generate complete thumbnail using Canvas API
  * Optionally uses AI-generated object image
  */
-export async function generateThumbnail(contentPlan, thumbnailPath) {
+export async function generateThumbnail(
+  contentPlan: ContentPlan,
+  thumbnailPath: string,
+): Promise<ThumbnailResult> {
   console.log("🖼️ Generating YouTube thumbnail...");
 
   // First, try to generate the object image with AI

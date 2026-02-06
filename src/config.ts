@@ -1,4 +1,31 @@
-export default {
+interface Config {
+  DEFAULT_DURATION: number;
+  DEFAULT_VIDEO_SIZE: string;
+  DEFAULT_AUDIO_BITRATE: string;
+  YOUTUBE_CATEGORY_MUSIC: string;
+  DEFAULT_PRIVACY: "private" | "public" | "unlisted";
+  DEFAULT_TAGS: string[];
+  AUDIO_STYLES: {
+    CHILL: string;
+    JAZZ: string;
+    AMBIENT: string;
+    UPBEAT: string;
+  };
+  PATHS: {
+    TEMP: string;
+    OUTPUT: string;
+    BACKGROUNDS: string;
+  };
+  VALIDATION: {
+    MIN_CHAPTERS: number;
+    MIN_CHAPTER_LENGTH: number;
+    FIRST_CHAPTER_TIME: string;
+    MAX_VIDEO_SIZE: number;
+    MAX_VIDEO_LENGTH: number;
+  };
+}
+
+const config: Config = {
   // Video settings
   DEFAULT_DURATION: 3600, // 1 hour in seconds
   DEFAULT_VIDEO_SIZE: "1920x1080",
@@ -44,3 +71,5 @@ export default {
     MAX_VIDEO_LENGTH: 12 * 60 * 60, // 12 hours
   },
 };
+
+export default config;

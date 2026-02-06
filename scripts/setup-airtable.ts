@@ -1,12 +1,31 @@
-import Airtable from "airtable";
 import dotenv from "dotenv";
 
 dotenv.config();
 
+interface FieldDefinition {
+  name: string;
+  type: string;
+  description?: string;
+  options?: any;
+}
+
+interface TableData {
+  id: string;
+  name: string;
+  primaryFieldId: string;
+  fields: FieldDefinition[];
+}
+
+interface MetaResponse {
+  tables: TableData[];
+  id?: string;
+  fields?: FieldDefinition[];
+}
+
 /**
  * Setup Airtable table with all required fields
  */
-async function setupAirtable() {
+async function setupAirtable(): Promise<void> {
   console.log("🔧 Setting up Airtable fields...");
 
   if (!process.env.AIRTABLE_PERSONAL_ACCESS_TOKEN) {
@@ -24,7 +43,7 @@ async function setupAirtable() {
   const token = process.env.AIRTABLE_PERSONAL_ACCESS_TOKEN;
 
   try {
-    // Use Airtable Metadata API to create fields
+    // use Airtable Metadata API to create fields
     const response = await fetch(
       `https://api.airtable.com/v0/meta/bases/${baseId}/tables`,
       {
@@ -97,34 +116,36 @@ async function setupAirtable() {
             },
           ],
         }),
-      }
+      },
     );
 
-    const data = await response.json();
+    const data = (await response.json()) as MetaResponse;
 
     if (!response.ok) {
-      if (data.error?.type === "TABLE_NAME_ALREADY_EXISTS") {
+      if ((data as any).error?.type === "TABLE_NAME_ALREADY_EXISTS") {
         console.log(
-          "⚠️  Table already exists. Attempting to add missing fields..."
+          "⚠️  Table already exists. Attempting to add missing fields...",
         );
         await addMissingFields(baseId, tableName, token);
       } else {
-        throw new Error(data.error?.message || "Failed to create table");
+        throw new Error(
+          (data as any).error?.message || "Failed to create table",
+        );
       }
     } else {
       console.log(`✅ Table '${tableName}' created successfully!`);
       console.log(`   Table ID: ${data.id}`);
       console.log("\n📋 Fields created:");
-      data.fields.forEach((field) => {
+      data.fields!.forEach((field) => {
         console.log(`   - ${field.name} (${field.type})`);
       });
     }
 
     console.log("\n✨ Setup complete! You can now use the content plan UI.");
   } catch (error) {
-    console.error("❌ Error setting up Airtable:", error.message);
-    if (error.response) {
-      console.error("Response:", await error.response.text());
+    console.error("❌ Error setting up Airtable:", (error as Error).message);
+    if ((error as any).response) {
+      console.error("Response:", await (error as any).response.text());
     }
     process.exit(1);
   }
@@ -133,19 +154,23 @@ async function setupAirtable() {
 /**
  * Add missing fields to existing table
  */
-async function addMissingFields(baseId, tableName, token) {
+async function addMissingFields(
+  baseId: string,
+  tableName: string,
+  token: string,
+): Promise<void> {
   try {
-    // First, get the existing table structure
+    // get the existing table structure
     const tablesResponse = await fetch(
       `https://api.airtable.com/v0/meta/bases/${baseId}/tables`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
         },
-      }
+      },
     );
 
-    const tablesData = await tablesResponse.json();
+    const tablesData = (await tablesResponse.json()) as MetaResponse;
     const table = tablesData.tables.find((t) => t.name === tableName);
 
     if (!table) {
@@ -158,7 +183,7 @@ async function addMissingFields(baseId, tableName, token) {
     const existingFields = table.fields.map((f) => f.name);
     console.log("   Existing fields:", existingFields.join(", "));
 
-    const requiredFields = [
+    const requiredFields: FieldDefinition[] = [
       {
         name: "Title",
         type: "singleLineText",
@@ -226,14 +251,14 @@ async function addMissingFields(baseId, tableName, token) {
               "Content-Type": "application/json",
             },
             body: JSON.stringify(field),
-          }
+          },
         );
 
         if (!response.ok) {
-          const error = await response.json();
+          const error: any = await response.json();
           console.error(
             `   ❌ Failed to add ${field.name}:`,
-            error.error.message
+            error.error.message,
           );
         } else {
           console.log(`   ✅ Added ${field.name}`);
@@ -248,10 +273,9 @@ async function addMissingFields(baseId, tableName, token) {
       console.log(`\n✅ Added ${addedCount} missing field(s)`);
     }
   } catch (error) {
-    console.error("❌ Error adding fields:", error.message);
+    console.error("❌ Error adding fields:", (error as Error).message);
     throw error;
   }
 }
 
-// Run the setup
 setupAirtable();

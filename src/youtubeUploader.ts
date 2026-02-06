@@ -1,4 +1,4 @@
-import { google } from "googleapis";
+import { google, youtube_v3 } from "googleapis";
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
@@ -8,6 +8,32 @@ dotenv.config();
 
 const OAuth2 = google.auth.OAuth2;
 
+interface VideoUploadData {
+  filePath: string;
+  title: string;
+  description: string;
+  tags?: string[];
+  privacyStatus?: "public" | "private" | "unlisted";
+}
+
+interface UploadResult {
+  videoId: string;
+  url: string;
+  data: youtube_v3.Schema$Video;
+}
+
+interface Chapter {
+  timestamp: string;
+  title: string;
+}
+
+interface ContentPlan {
+  title: string;
+  description: string;
+  tags?: string[];
+  chapters?: Chapter[];
+}
+
 /**
  * Create OAuth2 client
  */
@@ -15,14 +41,14 @@ function createOAuth2Client() {
   return new OAuth2(
     process.env.YOUTUBE_CLIENT_ID,
     process.env.YOUTUBE_CLIENT_SECRET,
-    process.env.YOUTUBE_REDIRECT_URI
+    process.env.YOUTUBE_REDIRECT_URI,
   );
 }
 
 /**
  * Get authenticated YouTube service
  */
-export async function getYouTubeService() {
+export async function getYouTubeService(): Promise<youtube_v3.Youtube> {
   const oauth2Client = createOAuth2Client();
 
   if (process.env.YOUTUBE_REFRESH_TOKEN) {
@@ -31,11 +57,14 @@ export async function getYouTubeService() {
     });
   } else {
     throw new Error(
-      "No YouTube refresh token found. Please authenticate first."
+      "No YouTube refresh token found. Please authenticate first.",
     );
   }
 
-  return google.youtube({ version: "v3", auth: oauth2Client });
+  return google.youtube({
+    version: "v3",
+    auth: oauth2Client,
+  });
 }
 
 /**
@@ -48,7 +77,9 @@ export async function getYouTubeService() {
  * @param {string} videoData.privacyStatus - 'public', 'private', or 'unlisted'
  * @returns {Promise<Object>} Video upload response with video ID
  */
-export async function uploadVideo(videoData) {
+export async function uploadVideo(
+  videoData: VideoUploadData,
+): Promise<UploadResult> {
   console.log("📤 Uploading video to YouTube...");
 
   const youtube = await getYouTubeService();
@@ -86,7 +117,7 @@ export async function uploadVideo(videoData) {
       },
     });
 
-    const videoId = response.data.id;
+    const videoId = response.data.id!;
     console.log(`✓ Video uploaded successfully!`);
     console.log(`   Video ID: ${videoId}`);
     console.log(`   URL: https://www.youtube.com/watch?v=${videoId}`);
@@ -97,9 +128,9 @@ export async function uploadVideo(videoData) {
       data: response.data,
     };
   } catch (error) {
-    console.error("Error uploading video:", error.message);
-    if (error.response) {
-      console.error("API Error:", error.response.data);
+    console.error("Error uploading video:", (error as Error).message);
+    if ((error as any).response) {
+      console.error("API Error:", (error as any).response.data);
     }
     throw error;
   }
@@ -109,7 +140,10 @@ export async function uploadVideo(videoData) {
  * Update video metadata (description, title, tags)
  * Used to add chapters and other info after upload
  */
-export async function updateVideoMetadata(videoId, metadata) {
+export async function updateVideoMetadata(
+  videoId: string,
+  metadata: youtube_v3.Schema$VideoSnippet,
+): Promise<youtube_v3.Schema$Video> {
   console.log("📝 Updating video metadata...");
 
   const youtube = await getYouTubeService();
@@ -126,7 +160,7 @@ export async function updateVideoMetadata(videoId, metadata) {
     console.log("✓ Metadata updated successfully");
     return response.data;
   } catch (error) {
-    console.error("Error updating metadata:", error.message);
+    console.error("Error updating metadata:", (error as Error).message);
     throw error;
   }
 }
@@ -134,7 +168,10 @@ export async function updateVideoMetadata(videoId, metadata) {
 /**
  * Set video thumbnail
  */
-export async function setThumbnail(videoId, thumbnailPath) {
+export async function setThumbnail(
+  videoId: string,
+  thumbnailPath: string,
+): Promise<youtube_v3.Schema$ThumbnailSetResponse> {
   console.log("🖼️ Uploading thumbnail...");
 
   const youtube = await getYouTubeService();
@@ -150,7 +187,7 @@ export async function setThumbnail(videoId, thumbnailPath) {
     console.log("✓ Thumbnail uploaded successfully");
     return response.data;
   } catch (error) {
-    console.error("Error uploading thumbnail:", error.message);
+    console.error("Error uploading thumbnail:", (error as Error).message);
     throw error;
   }
 }
@@ -159,7 +196,11 @@ export async function setThumbnail(videoId, thumbnailPath) {
  * Complete video upload with all metadata
  * This is the main function to upload and configure everything
  */
-export async function publishVideo(contentPlan, videoPath, thumbnailPath) {
+export async function publishVideo(
+  contentPlan: ContentPlan,
+  videoPath: string,
+  thumbnailPath: string,
+): Promise<UploadResult> {
   console.log("🚀 Publishing video to YouTube...");
 
   // Format description with chapters
@@ -190,7 +231,7 @@ export async function publishVideo(contentPlan, videoPath, thumbnailPath) {
     try {
       await setThumbnail(videoId, thumbnailPath);
     } catch (error) {
-      console.error("⚠ Failed to set thumbnail:", error.message);
+      console.error("⚠ Failed to set thumbnail:", (error as Error).message);
     }
   }
 
@@ -201,7 +242,7 @@ export async function publishVideo(contentPlan, videoPath, thumbnailPath) {
  * Generate OAuth URL for first-time authentication
  * Run this once to get your refresh token
  */
-export function generateAuthUrl() {
+export function generateAuthUrl(): string {
   const oauth2Client = createOAuth2Client();
 
   const scopes = [
@@ -226,7 +267,7 @@ export function generateAuthUrl() {
 /**
  * Exchange authorization code for tokens
  */
-export async function getTokenFromCode(code) {
+export async function getTokenFromCode(code: string): Promise<any> {
   const oauth2Client = createOAuth2Client();
 
   try {
@@ -236,7 +277,7 @@ export async function getTokenFromCode(code) {
     console.log(`YOUTUBE_REFRESH_TOKEN=${tokens.refresh_token}`);
     return tokens;
   } catch (error) {
-    console.error("Error getting tokens:", error.message);
+    console.error("Error getting tokens:", (error as Error).message);
     throw error;
   }
 }
@@ -244,10 +285,10 @@ export async function getTokenFromCode(code) {
 /**
  * Test video upload functionality
  */
-export async function testUpload() {
+export async function testUpload(): Promise<void> {
   const sampleVideoPath = path.resolve("assets/sample-lofi/lofi.mp4");
 
-  const videoData = {
+  const videoData: VideoUploadData = {
     filePath: sampleVideoPath,
     title: "Test Upload - Lofi Sample",
     description: "This is a test upload using the sample lofi video.",

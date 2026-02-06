@@ -11,3 +11,5 @@ temp/
 test-output-*.png
 credentials.json
 token.json
+test/
+dist/

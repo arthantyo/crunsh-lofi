@@ -7,6 +7,24 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+interface VideoOptions {
+  audioPath: string;
+  backgroundImage?: string;
+  overlayImage?: string;
+  format?: "mp4" | "avi";
+}
+
+interface Chapter {
+  timestamp: string;
+  title: string;
+}
+
+interface VideoInfo {
+  duration: number;
+  size: number;
+  bitrate: number;
+}
+
 // Set ffmpeg and ffprobe paths
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 ffmpeg.setFfprobePath(ffprobeInstaller.path);
@@ -21,7 +39,10 @@ ffmpeg.setFfprobePath(ffprobeInstaller.path);
  * @param {string} outputPath - Where to save the final video
  * @returns {Promise<string>} Path to the generated video
  */
-export async function createVideo(options, outputPath) {
+export async function createVideo(
+  options: VideoOptions,
+  outputPath: string,
+): Promise<string> {
   console.log("🎬 Creating video with FFmpeg...");
 
   const { audioPath, backgroundImage, overlayImage, format = "mp4" } = options;
@@ -119,14 +140,14 @@ export async function createVideo(options, outputPath) {
     }
 
     // Progress reporting
-    command.on("progress", (progress) => {
+    command.on("progress", (progress: any) => {
       if (progress.percent) {
         console.log(`   Processing: ${Math.round(progress.percent)}%`);
       }
     });
 
     // Error handling
-    command.on("error", (err) => {
+    command.on("error", (err: Error) => {
       console.error("FFmpeg error:", err.message);
       reject(err);
     });
@@ -146,7 +167,7 @@ export async function createVideo(options, outputPath) {
  * Add chapters to video description
  * Formats chapters according to YouTube requirements
  */
-export function formatChapters(chapters) {
+export function formatChapters(chapters: Chapter[]): string {
   if (!chapters || chapters.length < 3) {
     console.warn(
       "⚠ Need at least 3 chapters for YouTube. Chapters won't be added.",
@@ -173,7 +194,10 @@ export function formatChapters(chapters) {
 /**
  * Validate video duration matches chapters
  */
-export function validateChapters(chapters, videoDuration) {
+export function validateChapters(
+  chapters: Chapter[],
+  videoDuration: number,
+): boolean {
   if (!chapters || chapters.length === 0) return true;
 
   for (let i = 0; i < chapters.length; i++) {
@@ -205,7 +229,7 @@ export function validateChapters(chapters, videoDuration) {
 /**
  * Parse timestamp string to seconds
  */
-function parseTimestamp(timestamp) {
+function parseTimestamp(timestamp: string): number {
   const parts = timestamp.split(":").map(Number);
 
   if (parts.length === 2) {
@@ -222,7 +246,7 @@ function parseTimestamp(timestamp) {
 /**
  * Get video info
  */
-export async function getVideoInfo(videoPath) {
+export async function getVideoInfo(videoPath: string): Promise<VideoInfo> {
   return new Promise((resolve, reject) => {
     ffmpeg.ffprobe(videoPath, (err, metadata) => {
       if (err) {
@@ -247,11 +271,11 @@ export async function getVideoInfo(videoPath) {
  * @returns {Promise<string>} Path to the generated video
  */
 export async function stitchImageAndAudio(
-  imagePath,
-  audioPath,
-  outputPath,
-  options = {},
-) {
+  imagePath: string,
+  audioPath: string,
+  outputPath: string,
+  options: { duration?: number } = {},
+): Promise<string> {
   return new Promise((resolve, reject) => {
     ffmpeg()
       .addInput(imagePath)
@@ -268,7 +292,7 @@ export async function stitchImageAndAudio(
         console.log(`✅ Video created at ${outputPath}`);
         resolve(outputPath);
       })
-      .on("error", (err) => {
+      .on("error", (err: Error) => {
         console.error("FFmpeg error:", err.message);
         reject(err);
       })

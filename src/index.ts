@@ -7,35 +7,41 @@
 
 import dotenv from "dotenv";
 import path from "path";
-import { fileURLToPath } from "url";
 import readline from "readline";
-import { fetchContentPlan } from "./src/contentPlanning.js";
-import { generateThumbnail } from "./src/imageGenerator.js";
-import {
-  generateAudioFromPlan,
-  validateAudioFile,
-} from "./src/audioGenerator.js";
+import { fetchContentPlan } from "./contentPlanning.js";
+import { generateThumbnail } from "./imageGenerator.js";
+import { generateAudioFromPlan, validateAudioFile } from "./audioGenerator.js";
 import {
   createVideo,
   validateChapters,
   getVideoInfo,
-} from "./src/videoProcessor.js";
-import { publishVideo } from "./src/youtubeUploader.js";
-import {
-  startCallbackServer,
-  stopCallbackServer,
-} from "./src/callbackServer.js";
-
-// ES Module compatibility
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+} from "./videoProcessor.js";
+import { publishVideo } from "./youtubeUploader.js";
+import { startCallbackServer, stopCallbackServer } from "./callbackServer.js";
 
 dotenv.config();
+
+interface Chapter {
+  timestamp: string;
+  title: string;
+}
+
+interface ContentPlan {
+  title: string;
+  description: string;
+  subtitle: string;
+  tags: string[];
+  audioStyle: string;
+  duration: number;
+  imagePrompt?: string;
+  audioPrompt?: string;
+  chapters: Chapter[];
+}
 
 /**
  * Create readline interface for interactive input
  */
-function createReadlineInterface() {
+function createReadlineInterface(): readline.Interface {
   return readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -45,7 +51,7 @@ function createReadlineInterface() {
 /**
  * Prompt user for input
  */
-function prompt(question) {
+function prompt(question: string): Promise<string> {
   const rl = createReadlineInterface();
   return new Promise((resolve) => {
     rl.question(question, (answer) => {
@@ -58,7 +64,7 @@ function prompt(question) {
 /**
  * Interactive content plan input
  */
-async function getContentPlanInteractively() {
+async function getContentPlanInteractively(): Promise<ContentPlan> {
   console.log("\n📝 Interactive Content Plan Entry");
   console.log("================================\n");
 
@@ -67,7 +73,7 @@ async function getContentPlanInteractively() {
   const subtitle = await prompt("Subtitle (for thumbnail, e.g., 'chill!'): ");
   const tags = await prompt("Tags (comma-separated): ");
   const audioStyle = await prompt(
-    "Audio Style (lofi-chill/lofi-jazz/lofi-ambient/lofi-upbeat) [lofi-chill]: "
+    "Audio Style (lofi-chill/lofi-jazz/lofi-ambient/lofi-upbeat) [lofi-chill]: ",
   );
   const durationInput = await prompt("Duration in seconds [3600]: ");
   const imagePrompt = await prompt("Image generation prompt (optional): ");
@@ -77,13 +83,13 @@ async function getContentPlanInteractively() {
   console.log("Format: timestamp|title (e.g., 0:00|Introduction)");
   console.log("Enter chapters one per line, empty line to finish:\n");
 
-  const chapters = [];
+  const chapters: Chapter[] = [];
   let chapterInput;
   let chapterIndex = 1;
 
   while (true) {
     chapterInput = await prompt(
-      `Chapter ${chapterIndex} (or press Enter to finish): `
+      `Chapter ${chapterIndex} (or press Enter to finish): `,
     );
     if (!chapterInput.trim()) break;
 
@@ -105,7 +111,7 @@ async function getContentPlanInteractively() {
       ? tags.split(",").map((t) => t.trim())
       : ["lofi", "study music", "chill beats"],
     audioStyle: audioStyle || "lofi-chill",
-    duration: parseInt(durationInput) || 3600,
+    duration: parseInt(durationInput, 10) || 3600,
     imagePrompt: imagePrompt || undefined,
     audioPrompt: audioPrompt || undefined,
     chapters: chapters.length >= 3 ? chapters : [],
@@ -115,7 +121,7 @@ async function getContentPlanInteractively() {
 /**
  * Main automation workflow
  */
-async function main() {
+async function main(): Promise<void> {
   console.log("🎵 Lofi Video Automation Started");
   console.log("================================\n");
 
@@ -123,7 +129,7 @@ async function main() {
   await startCallbackServer();
 
   try {
-    // Check if interactive mode is enabled
+    // Check if interactive mode is
     const useInteractive =
       process.argv.includes("--interactive") || process.argv.includes("-i");
 
@@ -131,7 +137,7 @@ async function main() {
     const skipUpload =
       process.argv.includes("--no-upload") || process.argv.includes("-n");
 
-    let contentPlan;
+    let contentPlan: ContentPlan;
 
     if (useInteractive) {
       // Step 1: Get content plan interactively
@@ -139,7 +145,7 @@ async function main() {
     } else {
       // Step 1: Fetch content planning from API
       console.log("💡 Tip: Use --interactive or -i flag for manual input\n");
-      contentPlan = await fetchContentPlan();
+      contentPlan = (await fetchContentPlan()) as any;
     }
 
     console.log(`\n✓ Content Plan: "${contentPlan.title}"\n`);
@@ -155,8 +161,9 @@ async function main() {
 
     // Step 2: Generate thumbnail and object image
     console.log("\n--- Step 2: Generate Thumbnail & Object Image ---");
-    const { thumbnailPath: finalThumbnailPath, objectImagePath } =
-      await generateThumbnail(contentPlan, thumbnailPath);
+    const result = await generateThumbnail(contentPlan, thumbnailPath);
+    const finalThumbnailPath =
+      typeof result === "string" ? result : result.thumbnailPath;
 
     // Step 3: Generate audio
     console.log("\n--- Step 3: Generate Audio ---");
@@ -170,13 +177,13 @@ async function main() {
         audioPath: audioPath,
         backgroundImage: finalThumbnailPath,
       },
-      videoPath
+      videoPath,
     );
 
     // Validate video
     const videoInfo = await getVideoInfo(videoPath);
     console.log(
-      `\n✓ Video created: ${(videoInfo.size / 1024 / 1024).toFixed(2)} MB`
+      `\n✓ Video created: ${(videoInfo.size / 1024 / 1024).toFixed(2)} MB`,
     );
 
     // Validate chapters if provided
@@ -197,9 +204,9 @@ async function main() {
     } else {
       console.log("\n--- Step 5: Upload to YouTube ---");
       const uploadResult = await publishVideo(
-        contentPlan,
+        contentPlan as any,
         videoPath,
-        finalThumbnailPath
+        finalThumbnailPath,
       );
 
       console.log("\n================================");
@@ -211,8 +218,8 @@ async function main() {
     }
   } catch (error) {
     console.error("\n❌ Error in automation workflow:");
-    console.error(error.message);
-    console.error(error.stack);
+    console.error((error as Error).message);
+    console.error((error as Error).stack);
     process.exit(1);
   } finally {
     // Stop the callback server
@@ -223,7 +230,7 @@ async function main() {
 // Run the automation
 main().catch((error) => {
   console.error("\n❌ Fatal error:");
-  console.error(error.message);
-  console.error(error.stack);
+  console.error((error as Error).message);
+  console.error((error as Error).stack);
   process.exit(1);
 });
