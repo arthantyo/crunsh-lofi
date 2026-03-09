@@ -44,7 +44,7 @@
     "src/index.ts",
     "src/stitch.ts",
     "scripts/**/*",
-    "test-*.ts"
+    "test/test-*.ts"
   ],
   "exclude": ["node_modules", "dist", "temp", "output"]
 }

@@ -16,25 +16,34 @@ interface ThumbnailOptions {
 // Register custom fonts (optional - will use fallbacks if not found)
 try {
   // Try to register Instrument Serif and Plus Jakarta Sans if font files exist
-  const fontsDir = path.join(__dirname, "..", "fonts");
+  // When built: __dirname = dist/src/, so "../.." goes to project root
+  const fontsDir = path.join(__dirname, "..", "..", "fonts");
+
+  console.log(`📝 Attempting to load fonts from: ${fontsDir}`);
 
   // Attempt to load fonts if they exist
   try {
-    GlobalFonts.registerFromPath(
-      path.join(fontsDir, "InstrumentSerif-Regular.ttf"),
-      "Instrument Serif",
+    const instrumentSerifPath = path.join(
+      fontsDir,
+      "InstrumentSerif-Regular.ttf",
     );
+    console.log(`  Trying: ${instrumentSerifPath}`);
+    GlobalFonts.registerFromPath(instrumentSerifPath, "Instrument Serif");
+    console.log("✓ Instrument Serif loaded");
   } catch (e) {
-    console.log("Instrument Serif font not found, using serif fallback");
+    console.log(`⚠ Instrument Serif not loaded: ${(e as Error).message}`);
   }
 
   try {
-    GlobalFonts.registerFromPath(
-      path.join(fontsDir, "PlusJakartaSans-ExtraBold.ttf"),
-      "Plus Jakarta Sans",
+    const plusJakartaPath = path.join(
+      fontsDir,
+      "PlusJakartaSans-ExtraBold.ttf",
     );
+    console.log(`  Trying: ${plusJakartaPath}`);
+    GlobalFonts.registerFromPath(plusJakartaPath, "Plus Jakarta Sans");
+    console.log("✓ Plus Jakarta Sans loaded");
   } catch (e) {
-    console.log("Plus Jakarta Sans font not found, using sans-serif fallback");
+    console.log(`⚠ Plus Jakarta Sans not loaded: ${(e as Error).message}`);
   }
 } catch (e) {
   console.log("Custom fonts not available, using system fallbacks");
@@ -111,7 +120,7 @@ export async function generateThumbnail(
 
   // Main Title - Large centered text with Instrument Serif
   ctx.fillStyle = "#FFFFFF";
-  ctx.font = "180px 'Instrument Serif', 'Georgia', serif";
+  ctx.font = "180px 'Instrument Serif', serif";
   ctx.textAlign = "center";
   ctx.shadowColor = "rgba(0, 0, 0, 0.3)";
   ctx.shadowBlur = 15;
@@ -147,10 +156,10 @@ export async function generateThumbnail(
 
   // Subtitle - Bottom right of the frame grain with Plus Jakarta Sans Extra Bold
   ctx.shadowBlur = 0;
-  ctx.font = "900 48px 'Plus Jakarta Sans', 'Arial Black', sans-serif";
+  ctx.font = "900 48px 'Plus Jakarta Sans', sans-serif";
   ctx.fillStyle = "#FFFFFF";
   ctx.textAlign = "right";
-  const subtitleText = options.subtitle || "chill!";
+  const subtitleText = options.subtitle || "crunsh.";
 
   // Position at bottom right of frame grain
   const subtitleX = frameGrainX + frameGrainWidth - 20;
