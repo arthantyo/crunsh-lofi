@@ -6,11 +6,11 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "npm run build && node dist/index.js",
-    "dev": "tsc --watch & node --watch dist/index.js",
-    "interactive": "npm run build && node dist/index.js -- --interactive",
-    "interactive-no-upload": "npm run build && node dist/index.js -- --interactive --no-upload",
-    "no-upload": "npm run build && node dist/index.js -- --no-upload",
+    "start": "npm run build && node dist/src/index.js",
+    "dev": "tsc --watch & node --watch dist/src/index.js",
+    "interactive": "npm run build && node dist/src/index.js -- --interactive",
+    "interactive-no-upload": "npm run build && node dist/src/index.js -- --interactive --no-upload",
+    "no-upload": "npm run build && node dist/src/index.js -- --no-upload",
     "youtube-auth": "npm run build && node dist/scripts/get-youtube-token.js",
     "setup-airtable": "npm run build && node dist/scripts/setup-airtable.js",
     "test-upload": "npm run build && node dist/scripts/test-upload.js"

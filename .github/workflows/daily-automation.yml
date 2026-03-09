@@ -53,7 +53,7 @@ jobs:
           # Directories
           TEMP_DIRECTORY: ./temp
           OUTPUT_DIRECTORY: ./output
-        run: node dist/index.js
+        run: node dist/src/index.js
 
       - name: Upload video to artifacts
         if: success()
