@@ -12,7 +12,8 @@
     "interactive-no-upload": "npm run build && node dist/index.js -- --interactive --no-upload",
     "no-upload": "npm run build && node dist/index.js -- --no-upload",
     "youtube-auth": "npm run build && node dist/scripts/get-youtube-token.js",
-    "setup-airtable": "npm run build && node dist/scripts/setup-airtable.js"
+    "setup-airtable": "npm run build && node dist/scripts/setup-airtable.js",
+    "test-upload": "npm run build && node dist/scripts/test-upload.js"
   },
   "keywords": [
     "lofi",

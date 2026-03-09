@@ -8,23 +8,17 @@
 import dotenv from "dotenv";
 import path from "path";
 import readline from "readline";
-import { fetchContentPlan } from "./contentPlanning.js";
+import {
+  fetchContentPlan,
+  updateContentPlanStatus,
+} from "./contentPlanning.js";
 import { generateThumbnail } from "./imageGenerator.js";
 import { generateAudioFromPlan, validateAudioFile } from "./audioGenerator.js";
-import {
-  createVideo,
-  validateChapters,
-  getVideoInfo,
-} from "./videoProcessor.js";
-import { publishVideo } from "./youtubeUploader.js";
+import { createVideo, getVideoInfo } from "./videoProcessor.js";
+import { publishVideo, publishPendingVideos } from "./youtubeUploader.js";
 import { startCallbackServer, stopCallbackServer } from "./callbackServer.js";
 
 dotenv.config();
-
-interface Chapter {
-  timestamp: string;
-  title: string;
-}
 
 interface ContentPlan {
   title: string;
@@ -33,9 +27,7 @@ interface ContentPlan {
   tags: string[];
   audioStyle: string;
   duration: number;
-  imagePrompt?: string;
-  audioPrompt?: string;
-  chapters: Chapter[];
+  recordId?: string;
 }
 
 /**
@@ -76,32 +68,6 @@ async function getContentPlanInteractively(): Promise<ContentPlan> {
     "Audio Style (lofi-chill/lofi-jazz/lofi-ambient/lofi-upbeat) [lofi-chill]: ",
   );
   const durationInput = await prompt("Duration in seconds [3600]: ");
-  const imagePrompt = await prompt("Image generation prompt (optional): ");
-  const audioPrompt = await prompt("Audio generation prompt (optional): ");
-
-  console.log("\n📑 Chapters (optional - press Enter to skip)");
-  console.log("Format: timestamp|title (e.g., 0:00|Introduction)");
-  console.log("Enter chapters one per line, empty line to finish:\n");
-
-  const chapters: Chapter[] = [];
-  let chapterInput;
-  let chapterIndex = 1;
-
-  while (true) {
-    chapterInput = await prompt(
-      `Chapter ${chapterIndex} (or press Enter to finish): `,
-    );
-    if (!chapterInput.trim()) break;
-
-    const [timestamp, chapterTitle] = chapterInput.split("|");
-    if (timestamp && chapterTitle) {
-      chapters.push({
-        timestamp: timestamp.trim(),
-        title: chapterTitle.trim(),
-      });
-      chapterIndex++;
-    }
-  }
 
   return {
     title: title || "Lofi Beats",
@@ -112,9 +78,6 @@ async function getContentPlanInteractively(): Promise<ContentPlan> {
       : ["lofi", "study music", "chill beats"],
     audioStyle: audioStyle || "lofi-chill",
     duration: parseInt(durationInput, 10) || 3600,
-    imagePrompt: imagePrompt || undefined,
-    audioPrompt: audioPrompt || undefined,
-    chapters: chapters.length >= 3 ? chapters : [],
   };
 }
 
@@ -127,6 +90,10 @@ async function main(): Promise<void> {
 
   // Start callback server for kie.ai
   await startCallbackServer();
+
+  // Publish any videos that are ready (24+ hours old)
+  console.log("📋 Checking for videos to publish...");
+  await publishPendingVideos();
 
   try {
     // Check if interactive mode is
@@ -186,11 +153,6 @@ async function main(): Promise<void> {
       `\n✓ Video created: ${(videoInfo.size / 1024 / 1024).toFixed(2)} MB`,
     );
 
-    // Validate chapters if provided
-    if (contentPlan.chapters && contentPlan.chapters.length > 0) {
-      validateChapters(contentPlan.chapters, videoInfo.duration);
-    }
-
     // Step 5: Upload to YouTube (if not skipped)
     if (skipUpload) {
       console.log("\n--- Step 5: Upload to YouTube (SKIPPED) ---");
@@ -201,6 +163,11 @@ async function main(): Promise<void> {
       console.log("================================");
       console.log(`📁 Video file: ${videoPath}`);
       console.log(`🖼️ Thumbnail file: ${finalThumbnailPath}`);
+
+      // Update Airtable status to Completed (only if from Airtable, not interactive)
+      if (contentPlan.recordId) {
+        await updateContentPlanStatus(contentPlan.recordId, "Completed");
+      }
     } else {
       console.log("\n--- Step 5: Upload to YouTube ---");
       const uploadResult = await publishVideo(
@@ -215,6 +182,11 @@ async function main(): Promise<void> {
       console.log(`📺 Video URL: ${uploadResult.url}`);
       console.log(`🎬 Video ID: ${uploadResult.videoId}`);
       console.log(`📁 Local file: ${videoPath}`);
+
+      // Update Airtable status to Completed (only if from Airtable, not interactive)
+      if (contentPlan.recordId) {
+        await updateContentPlanStatus(contentPlan.recordId, "Completed");
+      }
     }
   } catch (error) {
     console.error("\n❌ Error in automation workflow:");

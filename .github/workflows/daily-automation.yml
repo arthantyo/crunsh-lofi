@@ -1,0 +1,86 @@
+name: Daily Lofi Video Automation
+
+on:
+  schedule:
+    # Run every day at 2 AM UTC (adjust to your timezone)
+    - cron: "0 2 * * *"
+  # Allow manual trigger from Actions tab
+  workflow_dispatch:
+
+jobs:
+  generate-video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Generate and upload video
+        env:
+          # Airtable
+          AIRTABLE_PERSONAL_ACCESS_TOKEN: ${{ secrets.AIRTABLE_PERSONAL_ACCESS_TOKEN }}
+          AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
+          AIRTABLE_TABLE_NAME: ${{ secrets.AIRTABLE_TABLE_NAME }}
+
+          # APIs
+          KIE_AI_API_KEY: ${{ secrets.KIE_AI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+          # YouTube
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REDIRECT_URI: ${{ secrets.YOUTUBE_REDIRECT_URI }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+
+          # Directories
+          TEMP_DIRECTORY: ./temp
+          OUTPUT_DIRECTORY: ./output
+        run: node dist/index.js
+
+      - name: Upload video to artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-video
+          path: output/*.mp4
+          retention-days: 30
+
+      - name: Clean up temp files
+        if: always()
+        run: |
+          rm -rf temp/*.mp3 temp/*.png
+          rm -rf dist/
+
+      - name: Upload output logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: automation-logs
+          path: |
+            output/
+            temp/
+          retention-days: 7
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Lofi video automation failed"
+          echo "Check the artifacts for logs and debug info"

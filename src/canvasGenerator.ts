@@ -87,9 +87,11 @@ export async function generateThumbnail(
     const frameGrainPath = path.join(
       __dirname,
       "..",
+      "..",
       "assets",
       "frame-grain.png",
     );
+
     const frameGrain = await loadImage(frameGrainPath);
 
     // Center the frame grain image
@@ -100,6 +102,7 @@ export async function generateThumbnail(
 
     ctx.drawImage(frameGrain, frameGrainX, frameGrainY);
   } catch (error) {
+    console.log(error);
     console.log("Frame grain image not found, skipping overlay");
   }
 

@@ -1,10 +1,24 @@
 import { google, youtube_v3 } from "googleapis";
-import fs from "fs";
+import fs from "fs/promises";
+import fsSync from "fs";
 import path from "path";
 import dotenv from "dotenv";
-import { formatChapters } from "./videoProcessor.js";
 
 dotenv.config();
+
+// File to track uploaded videos and their timestamps
+const VIDEO_REGISTRY_FILE = "./temp/video-registry.json";
+
+interface VideoRecord {
+  videoId: string;
+  title: string;
+  uploadedAt: number;
+  published: boolean;
+}
+
+interface VideoRegistry {
+  videos: VideoRecord[];
+}
 
 const OAuth2 = google.auth.OAuth2;
 
@@ -22,16 +36,10 @@ interface UploadResult {
   data: youtube_v3.Schema$Video;
 }
 
-interface Chapter {
-  timestamp: string;
-  title: string;
-}
-
 interface ContentPlan {
   title: string;
   description: string;
   tags?: string[];
-  chapters?: Chapter[];
 }
 
 /**
@@ -93,8 +101,14 @@ export async function uploadVideo(
   } = videoData;
 
   try {
-    const fileSize = fs.statSync(filePath).size;
+    const fileSize = fsSync.statSync(filePath).size;
     console.log(`   File size: ${(fileSize / 1024 / 1024).toFixed(2)} MB`);
+
+    // Schedule publish time 24 hours from now (only for private videos)
+    const publishAtTime =
+      privacyStatus === "private"
+        ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+        : undefined;
 
     const response = await youtube.videos.insert({
       part: ["snippet", "status"],
@@ -109,11 +123,12 @@ export async function uploadVideo(
         },
         status: {
           privacyStatus: privacyStatus,
+          publishAt: publishAtTime,
           selfDeclaredMadeForKids: false,
         },
       },
       media: {
-        body: fs.createReadStream(filePath),
+        body: fsSync.createReadStream(filePath),
       },
     });
 
@@ -121,6 +136,9 @@ export async function uploadVideo(
     console.log(`✓ Video uploaded successfully!`);
     console.log(`   Video ID: ${videoId}`);
     console.log(`   URL: https://www.youtube.com/watch?v=${videoId}`);
+    if (publishAtTime) {
+      console.log(`   📅 Scheduled to publish at: ${publishAtTime}`);
+    }
 
     return {
       videoId: videoId,
@@ -180,7 +198,7 @@ export async function setThumbnail(
     const response = await youtube.thumbnails.set({
       videoId: videoId,
       media: {
-        body: fs.createReadStream(thumbnailPath),
+        body: fsSync.createReadStream(thumbnailPath),
       },
     });
 
@@ -203,18 +221,11 @@ export async function publishVideo(
 ): Promise<UploadResult> {
   console.log("🚀 Publishing video to YouTube...");
 
-  // Format description with chapters
-  let description = contentPlan.description;
-
-  if (contentPlan.chapters && contentPlan.chapters.length >= 3) {
-    description += formatChapters(contentPlan.chapters);
-  }
-
   // Upload video
   const uploadResult = await uploadVideo({
     filePath: videoPath,
     title: contentPlan.title,
-    description: description,
+    description: contentPlan.description,
     tags: contentPlan.tags || [
       "lofi",
       "lofi hip hop",
@@ -234,6 +245,9 @@ export async function publishVideo(
       console.error("⚠ Failed to set thumbnail:", (error as Error).message);
     }
   }
+
+  // Record video for publishing in 24 hours
+  await recordUploadedVideo(videoId, contentPlan.title);
 
   return uploadResult;
 }
@@ -279,6 +293,130 @@ export async function getTokenFromCode(code: string): Promise<any> {
   } catch (error) {
     console.error("Error getting tokens:", (error as Error).message);
     throw error;
+  }
+}
+
+/**
+ * Record a newly uploaded video with timestamp for delayed publishing
+ */
+async function recordUploadedVideo(
+  videoId: string,
+  title: string,
+): Promise<void> {
+  try {
+    let registry: VideoRegistry = { videos: [] };
+
+    // Read existing registry if it exists
+    try {
+      const content = await fs.readFile(VIDEO_REGISTRY_FILE, "utf-8");
+      registry = JSON.parse(content);
+    } catch (e) {
+      // File doesn't exist yet, create new registry
+      registry = { videos: [] };
+    }
+
+    // Add new video record
+    registry.videos.push({
+      videoId,
+      title,
+      uploadedAt: Date.now(),
+      published: false,
+    });
+
+    // Ensure temp directory exists
+    await fs.mkdir("./temp", { recursive: true });
+
+    // Write registry back
+    await fs.writeFile(VIDEO_REGISTRY_FILE, JSON.stringify(registry, null, 2));
+
+    console.log(`📝 Recorded video for publishing in 24 hours: ${videoId}`);
+  } catch (error) {
+    console.error("⚠ Failed to record video:", (error as Error).message);
+  }
+}
+
+/**
+ * Check for videos that are ready to publish (24+ hours old)
+ * Updates their privacy status from private to public
+ */
+export async function publishPendingVideos(): Promise<void> {
+  try {
+    // Check if registry file exists
+    if (!fsSync.existsSync(VIDEO_REGISTRY_FILE)) {
+      return; // No videos to publish
+    }
+
+    const content = await fs.readFile(VIDEO_REGISTRY_FILE, "utf-8");
+    const registry: VideoRegistry = JSON.parse(content);
+    const now = Date.now();
+    const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+    const youtube = await getYouTubeService();
+    let updatedAny = false;
+
+    for (const video of registry.videos) {
+      if (video.published) continue; // Already published
+
+      const ageMs = now - video.uploadedAt;
+
+      if (ageMs >= ONE_DAY_MS) {
+        console.log(
+          `\n📖 Publishing video from 24 hours ago: ${video.videoId}`,
+        );
+
+        try {
+          // Get current video metadata
+          const getResponse = await youtube.videos.list({
+            part: ["snippet", "status"],
+            id: [video.videoId],
+          });
+
+          if (!getResponse.data.items || getResponse.data.items.length === 0) {
+            console.log(
+              `   ⚠ Video not found (may have been deleted): ${video.videoId}`,
+            );
+            video.published = true;
+            updatedAny = true;
+            continue;
+          }
+
+          // Update status to public
+          await youtube.videos.update({
+            part: ["status"],
+            requestBody: {
+              id: video.videoId,
+              status: {
+                privacyStatus: "public",
+              },
+            },
+          });
+
+          console.log(
+            `   ✓ Published! https://www.youtube.com/watch?v=${video.videoId}`,
+          );
+          video.published = true;
+          updatedAny = true;
+        } catch (error) {
+          console.error(
+            `   ❌ Failed to publish video: ${(error as Error).message}`,
+          );
+        }
+      }
+    }
+
+    // Clean up published videos and write updated registry
+    if (updatedAny) {
+      registry.videos = registry.videos.filter((v) => !v.published);
+      await fs.writeFile(
+        VIDEO_REGISTRY_FILE,
+        JSON.stringify(registry, null, 2),
+      );
+    }
+  } catch (error) {
+    console.error(
+      "Error checking for pending videos:",
+      (error as Error).message,
+    );
   }
 }
 

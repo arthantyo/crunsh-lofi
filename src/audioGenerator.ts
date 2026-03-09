@@ -186,9 +186,12 @@ export async function generateAudio(
   try {
     const response = await retryWithBackoff(async () => {
       const payload = {
+        customMode: true,
+        instrumental: true,
+        model: "V5",
         title: options.title,
         prompt: options.prompt,
-        tags: options.style,
+        style: options.style,
         duration: options.duration,
         callBackUrl: CALLBACK_URL,
       };
@@ -281,7 +284,7 @@ async function generateAIFoodPrompt(foodName: string): Promise<string> {
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       const prompt = `Generate a creative and engaging lofi hip hop description/prompt for a track inspiration by: "${foodName}".
             The description should capture the vibe, mood, and feeling of that food in a lofi music context.
