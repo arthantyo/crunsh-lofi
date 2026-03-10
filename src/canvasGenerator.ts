@@ -159,7 +159,7 @@ export async function generateThumbnail(
   ctx.font = "900 48px 'Plus Jakarta Sans', sans-serif";
   ctx.fillStyle = "#FFFFFF";
   ctx.textAlign = "right";
-  const subtitleText = options.subtitle || "crunsh.";
+  const subtitleText = "crunsh.";
 
   // Position at bottom right of frame grain
   const subtitleX = frameGrainX + frameGrainWidth - 20;
