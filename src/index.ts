@@ -13,7 +13,11 @@ import {
   updateContentPlanStatus,
 } from "./contentPlanning.js";
 import { generateThumbnail } from "./imageGenerator.js";
-import { generateAudioFromPlan, validateAudioFile } from "./audioGenerator.js";
+import {
+  generateAudioPrompt,
+  generateAudioWithPrompt,
+  validateAudioFile,
+} from "./audioGenerator.js";
 import { createVideo, getVideoInfo } from "./videoProcessor.js";
 import { publishVideo, publishPendingVideos } from "./youtubeUploader.js";
 import { startCallbackServer, stopCallbackServer } from "./callbackServer.js";
@@ -126,19 +130,24 @@ async function main(): Promise<void> {
     const thumbnailPath = path.join(tempDir, `thumbnail_${timestamp}.png`);
     const videoPath = path.join(outputDir, `lofi_video_${timestamp}.mp4`);
 
-    // Step 2: Generate thumbnail and object image
-    console.log("\n--- Step 2: Generate Thumbnail & Object Image ---");
+    // Step 2: Generate audio prompt first (free - Gemini)
+    console.log("\n--- Step 2: Generate Audio Prompt ---");
+    const audioPrompt = await generateAudioPrompt(contentPlan.title);
+    console.log(`✓ Audio prompt generated: "${audioPrompt}"\n`);
+
+    // Step 3: Generate thumbnail and object image (paid - kie.ai)
+    console.log("--- Step 3: Generate Thumbnail & Object Image ---");
     const result = await generateThumbnail(contentPlan, thumbnailPath);
     const finalThumbnailPath =
       typeof result === "string" ? result : result.thumbnailPath;
 
-    // Step 3: Generate audio
-    console.log("\n--- Step 3: Generate Audio ---");
-    await generateAudioFromPlan(contentPlan, audioPath);
+    // Step 4: Generate audio (paid - kie.ai)
+    console.log("\n--- Step 4: Generate Audio ---");
+    await generateAudioWithPrompt(contentPlan, audioPrompt, audioPath);
     await validateAudioFile(audioPath);
 
-    // Step 4: Create video (use thumbnail as background)
-    console.log("\n--- Step 4: Create Video ---");
+    // Step 5: Create video (use thumbnail as background)
+    console.log("\n--- Step 5: Create Video ---");
     await createVideo(
       {
         audioPath: audioPath,
@@ -153,9 +162,9 @@ async function main(): Promise<void> {
       `\n✓ Video created: ${(videoInfo.size / 1024 / 1024).toFixed(2)} MB`,
     );
 
-    // Step 5: Upload to YouTube (if not skipped)
+    // Step 6: Upload to YouTube (if not skipped)
     if (skipUpload) {
-      console.log("\n--- Step 5: Upload to YouTube (SKIPPED) ---");
+      console.log("\n--- Step 6: Upload to YouTube (SKIPPED) ---");
       console.log("💡 Upload skipped due to --no-upload flag");
 
       console.log("\n================================");
@@ -169,7 +178,7 @@ async function main(): Promise<void> {
         await updateContentPlanStatus(contentPlan.recordId, "Completed");
       }
     } else {
-      console.log("\n--- Step 5: Upload to YouTube ---");
+      console.log("\n--- Step 6: Upload to YouTube ---");
       const uploadResult = await publishVideo(
         contentPlan as any,
         videoPath,

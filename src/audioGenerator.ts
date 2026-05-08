@@ -269,17 +269,15 @@ export async function generateAudio(
 
 /**
  * Generate AI-powered lofi prompt for any food using Gemini
+ * Fails immediately if API key missing or generation fails (no fallback)
  */
 async function generateAIFoodPrompt(foodName: string): Promise<string> {
   if (!genAI) {
-    console.warn(
-      "⚠️  Gemini API key not found. Using generic prompt for",
-      foodName,
+    throw new Error(
+      "❌ Gemini API key not found (GEMINI_API_KEY env var). Cannot generate audio prompt.",
     );
-    return `Relaxing lofi hip hop inspired by ${foodName} - smooth beats, warm textures, ambient sounds perfect for studying or relaxing`;
   }
 
-  // Retry logic for handling API overload
   const maxRetries = 3;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -291,9 +289,11 @@ async function generateAIFoodPrompt(foodName: string): Promise<string> {
             Keep it concise (1-2 sentences) and evocative. Focus on sensory details and atmosphere.`;
 
       const result = await model.generateContent(prompt);
-      const generatedPrompt =
-        result.response.text().trim() ||
-        `Relaxing lofi hip hop inspired by ${foodName}`;
+      const generatedPrompt = result.response.text().trim();
+
+      if (!generatedPrompt) {
+        throw new Error("Empty response from Gemini");
+      }
 
       console.log(`   Generated prompt for "${foodName}": ${generatedPrompt}`);
       return generatedPrompt;
@@ -304,14 +304,14 @@ async function generateAIFoodPrompt(foodName: string): Promise<string> {
         (error as any).message?.includes("rate");
 
       if (isRateLimitError && attempt < maxRetries) {
-        const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff
+        const waitTime = Math.pow(2, attempt) * 1000;
         console.warn(
           `⚠️  Rate limited. Waiting ${waitTime / 1000}s before retry...`,
         );
         await new Promise((resolve) => setTimeout(resolve, waitTime));
       } else if (attempt === maxRetries) {
-        console.warn(
-          `⚠️  Failed to generate prompt after ${maxRetries} attempts: ${
+        throw new Error(
+          `❌ Failed to generate audio prompt after ${maxRetries} attempts: ${
             (error as Error).message
           }`,
         );
@@ -323,9 +323,7 @@ async function generateAIFoodPrompt(foodName: string): Promise<string> {
     }
   }
 
-  // Fallback to generic prompt after all retries
-  console.warn(`⚠️  Using fallback prompt for ${foodName}`);
-  return `Relaxing lofi hip hop inspired by ${foodName} - smooth beats, warm textures, ambient sounds perfect for studying or relaxing`;
+  throw new Error("Failed to generate audio prompt - max retries exhausted");
 }
 
 /**
@@ -351,6 +349,34 @@ export async function generateAudioFromPlan(
     duration: contentPlan.duration || 3600,
     title: contentPlan.title || "Lofi Beats to Chill",
     prompt: contentPlan.audioPrompt || foodPrompt,
+  };
+
+  return await generateAudio(audioOptions, outputPath);
+}
+
+/**
+ * Generate just the audio prompt (free - uses Gemini)
+ * Call this early to fail fast if rate limited, before spending kie.ai credits
+ */
+export async function generateAudioPrompt(title: string): Promise<string> {
+  console.log("🎤 Generating audio prompt...");
+  return await generateFoodThemePrompt(title);
+}
+
+/**
+ * Generate audio from content plan with pre-generated prompt
+ * Skips prompt generation if already provided
+ */
+export async function generateAudioWithPrompt(
+  contentPlan: any,
+  audioPrompt: string,
+  outputPath: string,
+): Promise<string> {
+  const audioOptions: AudioOptions = {
+    style: contentPlan.audioStyle || "lofi-chill",
+    duration: contentPlan.duration || 3600,
+    title: contentPlan.title || "Lofi Beats to Chill",
+    prompt: contentPlan.audioPrompt || audioPrompt,
   };
 
   return await generateAudio(audioOptions, outputPath);
