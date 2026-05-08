@@ -266,25 +266,11 @@ export async function generateImage(
       }
     }
 
-    // Fallback: create placeholder with message
-    console.log("⚠ Using fallback Canvas-based image generation");
-    return await createFallbackImage(outputPath, prompt);
+    // Fail immediately instead of using fallback
+    throw new Error(
+      `Image generation failed: ${error.message} - Aborting to save credits`,
+    );
   }
-}
-
-/**
- * Fallback image creation if API fails
- */
-async function createFallbackImage(
-  outputPath: string,
-  prompt: string,
-): Promise<string> {
-  // This will be handled by the Canvas API module
-  const { generateThumbnail } = await import("./canvasGenerator.js");
-  return await generateThumbnail(
-    { title: "Lofi Beats", subtitle: prompt.substring(0, 50) },
-    outputPath,
-  );
 }
 
 /**
@@ -294,7 +280,7 @@ async function createFallbackImage(
 export async function generateObjectImage(
   contentPlan: ContentPlan,
   outputPath: string,
-): Promise<string | null> {
+): Promise<string> {
   console.log("🎨 Generating object image with kie.ai...");
 
   // Base lofi aesthetic styling with transparent background
@@ -319,20 +305,16 @@ export async function generateObjectImage(
     prompt = `A single ${contentPlan.title || "object"}, ${lofiStyle}`;
   }
 
-  try {
-    return await generateImage(prompt, outputPath, {
-      size: "1:1", // Square aspect ratio for objects
-      isEnhance: true, // Enhance quality
-    });
-  } catch (error) {
-    console.log("⚠ AI image generation failed, will use default sample object");
-    return null; // Will fall back to default sample object
-  }
+  // Generate image - will throw error if it fails (no fallback)
+  return await generateImage(prompt, outputPath, {
+    size: "1:1", // Square aspect ratio for objects
+    isEnhance: true, // Enhance quality
+  });
 }
 
 /**
  * Generate complete thumbnail using Canvas API
- * Optionally uses AI-generated object image
+ * Uses AI-generated object image (fails if image generation fails)
  */
 export async function generateThumbnail(
   contentPlan: ContentPlan,
@@ -340,7 +322,7 @@ export async function generateThumbnail(
 ): Promise<ThumbnailResult> {
   console.log("🖼️ Generating YouTube thumbnail...");
 
-  // First, try to generate the object image with AI
+  // Generate the object image with AI (will throw error if it fails - no fallback)
   const timestamp = Date.now();
   const objectPath = path.join(
     path.dirname(thumbnailPath),
@@ -360,7 +342,7 @@ export async function generateThumbnail(
     {
       title: contentPlan.title,
       subtitle: contentPlan.subtitle || "chill!",
-      sampleObject: generatedObjectPath || undefined, // Will use default if null
+      sampleObject: generatedObjectPath,
     },
     thumbnailPath,
   );

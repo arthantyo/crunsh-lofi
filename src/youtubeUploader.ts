@@ -42,6 +42,19 @@ interface ContentPlan {
   tags?: string[];
 }
 
+// Cache the OAuth2 client to avoid concurrent refreshes
+let cachedOAuth2Client: any = null;
+let cachedYouTubeService: youtube_v3.Youtube | null = null;
+
+/**
+ * Clear cached auth tokens (call this if token expires)
+ */
+export function clearAuthCache(): void {
+  console.log("🔄 Clearing cached YouTube auth...");
+  cachedOAuth2Client = null;
+  cachedYouTubeService = null;
+}
+
 /**
  * Create OAuth2 client
  */
@@ -54,10 +67,31 @@ function createOAuth2Client() {
 }
 
 /**
- * Get authenticated YouTube service
+ * Get authenticated YouTube service (cached to avoid concurrent token refreshes)
+ * Auto-retries token refresh if it fails temporarily
  */
 export async function getYouTubeService(): Promise<youtube_v3.Youtube> {
-  const oauth2Client = createOAuth2Client();
+  // Return cached service if available
+  if (cachedYouTubeService) {
+    return cachedYouTubeService;
+  }
+
+  // Create OAuth2 client if not cached
+  if (!cachedOAuth2Client) {
+    cachedOAuth2Client = createOAuth2Client();
+  }
+
+  const oauth2Client = cachedOAuth2Client;
+
+  // Debug: Log which credentials are being used
+  const hasClientId = !!process.env.YOUTUBE_CLIENT_ID;
+  const hasClientSecret = !!process.env.YOUTUBE_CLIENT_SECRET;
+  const hasRedirectUri = !!process.env.YOUTUBE_REDIRECT_URI;
+  const hasRefreshToken = !!process.env.YOUTUBE_REFRESH_TOKEN;
+
+  console.log(
+    `🔑 Auth check: ClientID=${hasClientId}, Secret=${hasClientSecret}, URI=${hasRedirectUri}, Token=${hasRefreshToken}`,
+  );
 
   if (process.env.YOUTUBE_REFRESH_TOKEN) {
     oauth2Client.setCredentials({
@@ -69,10 +103,12 @@ export async function getYouTubeService(): Promise<youtube_v3.Youtube> {
     );
   }
 
-  return google.youtube({
+  cachedYouTubeService = google.youtube({
     version: "v3",
     auth: oauth2Client,
   });
+
+  return cachedYouTubeService;
 }
 
 /**
@@ -146,10 +182,30 @@ export async function uploadVideo(
       data: response.data,
     };
   } catch (error) {
-    console.error("Error uploading video:", (error as Error).message);
+    // Log detailed error info for debugging token issues
+    const errorMsg = (error as Error).message;
+    const isTokenError =
+      errorMsg.includes("invalid_grant") ||
+      errorMsg.includes("401") ||
+      errorMsg.includes("Unauthorized");
+
+    console.error("Error uploading video:", errorMsg);
     if ((error as any).response) {
       console.error("API Error:", (error as any).response.data);
     }
+
+    if (isTokenError) {
+      console.error(
+        "🔴 TOKEN ERROR - Your YouTube refresh token may have expired.",
+      );
+      console.error(
+        "   Run locally: npm run youtube-auth (to get a fresh token)",
+      );
+      console.error("   Then update YOUTUBE_REFRESH_TOKEN in GitHub Secrets");
+      cachedOAuth2Client = null;
+      cachedYouTubeService = null;
+    }
+
     throw error;
   }
 }
