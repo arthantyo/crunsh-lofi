@@ -33,6 +33,7 @@
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^1.4.1",
     "@google/generative-ai": "^0.24.1",
+    "@imgly/background-removal": "^1.7.0",
     "@napi-rs/canvas": "^0.1.56",
     "airtable": "^0.12.2",
     "axios": "^1.6.5",
@@ -41,6 +42,7 @@
     "fluent-ffmpeg": "^2.1.2",
     "googleapis": "^131.0.0",
     "inquirer": "^13.2.1",
+    "onnxruntime-web": "^1.21.0",
     "openai": "^6.15.0"
   }
 }

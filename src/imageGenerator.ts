@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import dotenv from "dotenv";
 import { registerTask } from "./callbackServer.js";
+import { removeBackground } from "@imgly/background-removal";
 
 dotenv.config();
 
@@ -274,6 +275,28 @@ export async function generateImage(
 }
 
 /**
+ * Remove background from an image file and save as PNG with transparency
+ * @param {string} imagePath - Path to the image file
+ * @returns {Promise<void>}
+ */
+async function removeImageBackground(imagePath: string): Promise<void> {
+  console.log("🧹 Removing background from image...");
+
+  // Read image file
+  const imageBuffer = await fs.readFile(imagePath);
+
+  // Remove background using imgly
+  const blob = await removeBackground(imageBuffer);
+
+  // Convert blob to buffer and save back as PNG
+  const arrayBuffer = await blob.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+
+  await fs.writeFile(imagePath, buffer);
+  console.log("✓ Background removed and image saved with transparency");
+}
+
+/**
  * Generate object image for thumbnail using kie.ai
  * This generates just the object (burger, cat, etc.) that will be composited on the canvas
  */
@@ -306,10 +329,15 @@ export async function generateObjectImage(
   }
 
   // Generate image - will throw error if it fails (no fallback)
-  return await generateImage(prompt, outputPath, {
+  const imagePath = await generateImage(prompt, outputPath, {
     size: "1:1", // Square aspect ratio for objects
     isEnhance: true, // Enhance quality
   });
+
+  // Remove background to ensure transparency
+  await removeImageBackground(imagePath);
+
+  return imagePath;
 }
 
 /**
