@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import dotenv from "dotenv";
 import { registerTask } from "./callbackServer.js";
-import { removeBackground } from "@imgly/background-removal";
+import { removeBackground } from "@imgly/background-removal-node";
 
 dotenv.config();
 
@@ -285,8 +285,9 @@ async function removeImageBackground(imagePath: string): Promise<void> {
   // Read image file
   const imageBuffer = await fs.readFile(imagePath);
 
-  // Remove background using imgly
-  const blob = await removeBackground(imageBuffer);
+  // Remove background using imgly (convert to Uint8Array as per API signature)
+  const toBeRemove = new Blob([imageBuffer], { type: "image/png" });
+  const blob = await removeBackground(toBeRemove);
 
   // Convert blob to buffer and save back as PNG
   const arrayBuffer = await blob.arrayBuffer();
