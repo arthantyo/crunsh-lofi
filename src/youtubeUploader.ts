@@ -112,6 +112,22 @@ export async function getYouTubeService(): Promise<youtube_v3.Youtube> {
 }
 
 /**
+ * Ensure description includes hashtags from tags if not already present
+ */
+function ensureHashtags(description: string, tags?: string[]): string {
+  // Check if description already contains hashtags
+  const hasHashtags = /#\w+/.test(description);
+
+  if (!hasHashtags && tags && tags.length > 0) {
+    // Append hashtags based on provided tags
+    const hashtags = tags.map((tag) => `#${tag}`).join(" ");
+    return `${description}\n\n${hashtags}`;
+  }
+
+  return description;
+}
+
+/**
  * Upload video to YouTube
  * @param {Object} videoData - Video metadata and file info
  * @param {string} videoData.filePath - Path to video file
@@ -146,12 +162,15 @@ export async function uploadVideo(
         ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
         : undefined;
 
+    // Ensure description has hashtags
+    const descriptionWithHashtags = ensureHashtags(description, tags);
+
     const response = await youtube.videos.insert({
       part: ["snippet", "status"],
       requestBody: {
         snippet: {
           title: title,
-          description: description,
+          description: descriptionWithHashtags,
           tags: tags,
           categoryId: "10", // Music category
           defaultLanguage: "en",
