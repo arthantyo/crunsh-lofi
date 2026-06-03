@@ -114,13 +114,21 @@ export async function getYouTubeService(): Promise<youtube_v3.Youtube> {
 /**
  * Ensure description includes hashtags from tags if not already present
  */
+function formatHashtagTag(tag: string): string {
+  return tag.trim().replace(/^#/, "").replace(/\s+/g, "");
+}
+
 function ensureHashtags(description: string, tags?: string[]): string {
   // Check if description already contains hashtags
   const hasHashtags = /#\w+/.test(description);
 
   if (!hasHashtags && tags && tags.length > 0) {
     // Append hashtags based on provided tags
-    const hashtags = tags.map((tag) => `#${tag}`).join(" ");
+    const hashtags = tags
+      .map((tag) => formatHashtagTag(tag))
+      .filter(Boolean)
+      .map((tag) => `#${tag}`)
+      .join(" ");
     return `${description}\n\n${hashtags}`;
   }
 
